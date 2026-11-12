@@ -1,0 +1,89 @@
+name: Build PKGj (Vita games + DLCs only)
+
+# Builds PKGj from blastrock/pkgj at a pinned commit with our patches from pkgj/*.patch,
+# stores the resulting pkgj.vpk in the Android assets (preinstalled in the emulator),
+# then starts the Android build.
+on:
+  push:
+    paths:
+      - 'pkgj/**'
+      - '.github/workflows/build-pkgj.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: build-pkgj
+  cancel-in-progress: true
+
+env:
+  PKGJ_REPO: https://github.com/blastrock/pkgj
+  PKGJ_COMMIT: bf746865ff4aed40cfb5aa1810bd2d2460f025f0   # v0.61 master, "Update categories strings"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch PKGj sources and apply patches
+        run: |
+          git clone "$PKGJ_REPO" pkgj-src
+          git -C pkgj-src checkout "$PKGJ_COMMIT"
+          for p in pkgj/*.patch; do
+            echo "Applying $p"
+            git -C pkgj-src apply --verbose "$GITHUB_WORKSPACE/$p"
+          done
+
+      - name: Install apt dependencies
+        run: sudo apt-get install -y ninja-build g++-12 pipx && pipx install poetry
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-pkgj-${{ env.PKGJ_COMMIT }}
+
+      - name: Build PKGj for PS Vita
+        working-directory: pkgj-src/ci
+        env:
+          CI: 'true'
+          CC: gcc-12
+          CXX: g++-12
+        run: |
+          set -xe
+          ./setup_conan.sh
+          rm -rf build && mkdir build && cd build
+          poetry run conan install ../.. --build missing -s build_type=RelWithDebInfo --profile:host vita --output-folder .
+          poetry run conan build ../.. -s build_type=RelWithDebInfo --profile:host vita --output-folder .
+          ls -la pkgj.vpk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkgj.vpk
+          path: pkgj-src/ci/build/pkgj.vpk
+
+      - name: Put PKGj into the Android assets and start the Android build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p android/app/assets/preinstalled test
+          cp pkgj-src/ci/build/pkgj.vpk android/app/assets/preinstalled/pkgj.vpk
+          cp pkgj-src/ci/build/pkgj.vpk test/pkgj.vpk
+          echo -n "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" > android/app/assets/preinstalled/pkgj.version
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -f android/app/assets/preinstalled test/pkgj.vpk
+          git commit -m "CI: update bundled PKGj (Vita games + DLCs only) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            sleep 5
+          done
+          gh workflow run android-arm64.yml --ref "${GITHUB_REF_NAME}"

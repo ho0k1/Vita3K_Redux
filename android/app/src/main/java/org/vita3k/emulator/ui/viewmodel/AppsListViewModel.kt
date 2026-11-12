@@ -289,25 +289,32 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** Installs the PKGj homebrew bundled in the APK assets once, on first launch. */
+    /**
+     * Installs the PKGj homebrew bundled in the APK assets. It is (re)installed whenever the bundled build changes
+     * (assets/preinstalled/pkgj.version is rewritten by CI), so new emulator builds also bring the newest PKGj.
+     */
     private suspend fun installBundledPkgj() {
         val context = getApplication<Application>()
         val prefs = context.getSharedPreferences("bundled_apps", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("pkgj_installed", false)) return
         try {
-            if (AppRepository.getAppList().any { it.titleId == "PKGJ00000" }) {
-                prefs.edit().putBoolean("pkgj_installed", true).apply()
-                return
+            val bundledVersion = withContext(Dispatchers.IO) {
+                try {
+                    context.assets.open("preinstalled/pkgj.version").bufferedReader().use { it.readText().trim() }
+                } catch (e: Exception) {
+                    "1"
+                }
             }
+            if (prefs.getString("pkgj_version", null) == bundledVersion) return
+
             val tmp = File(context.cacheDir, "pkgj.vpk")
             withContext(Dispatchers.IO) {
                 context.assets.open("preinstalled/pkgj.vpk").use { input ->
                     tmp.outputStream().use { output -> input.copyTo(output) }
                 }
             }
-            val ok = InstallRepository.installArchive(tmp.absolutePath, false) { _, _ -> }
+            val ok = InstallRepository.installArchive(tmp.absolutePath, true) { _, _ -> }
             tmp.delete()
-            if (ok) prefs.edit().putBoolean("pkgj_installed", true).apply()
+            if (ok) prefs.edit().putString("pkgj_version", bundledVersion).apply()
             else Log.w("AppsListViewModel", "Bundled PKGj install failed")
         } catch (e: CancellationException) {
             throw e

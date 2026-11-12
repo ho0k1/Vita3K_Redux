@@ -86,6 +86,12 @@
 - [ ] Release-APK с подписью (ключ в GitHub Secrets).
 - [ ] Короткая инструкция по установке в README.
 
+## PKGj: только PSV игры и DLC
+
+Исходник PKGj v0.61 это `blastrock/pkgj` (коммит `bf74686`). Патч `pkgj/0001-only-vita-games-and-dlcs.patch` убирает из браузера PSV Themes, Demos, PSM, PSP, PSP DLC и PS1, а при «Refresh» PKGj скачивает только списки игр и DLC (раньше 8 списков).
+
+Workflow `Build PKGj` собирает патченый `pkgj.vpk` (VitaSDK через Conan), кладёт его в `android/app/assets/preinstalled/` и запускает сборку APK. Эмулятор переустанавливает встроенный PKGj, когда файл `pkgj.version` меняется.
+
 ## Установка новых сборок поверх старых
 
 Раньше каждая CI-сборка получала случайный debug-ключ, поэтому Android не давал поставить новый APK поверх старого («Приложение не установлено») и приходилось удалять эмулятор вместе с данными.

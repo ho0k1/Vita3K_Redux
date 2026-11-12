@@ -6,6 +6,7 @@ on:
       - '**.md'
       - 'docs/**'
       - '_readme/**'
+      - 'pkgj/**'
   workflow_dispatch:
 
 concurrency:
