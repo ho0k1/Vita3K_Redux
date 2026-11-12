@@ -85,7 +85,11 @@ android {
 			jniDebuggable = true
 			externalNativeBuild {
 				cmake {
-					arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+					arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DTRACY_ENABLE_ON_CORE_COMPONENTS=OFF"
+					// ccache only on CI (the NDK clang is not on PATH, so ccache has to be wired in as a compiler launcher)
+					if (System.getenv("CI")) {
+						arguments "-DCMAKE_C_COMPILER_LAUNCHER=ccache", "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+					}
 				}
 			}
 			minifyEnabled = false
