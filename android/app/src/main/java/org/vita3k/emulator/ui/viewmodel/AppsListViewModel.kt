@@ -1,6 +1,8 @@
 package org.vita3k.emulator.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.util.Log
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import androidx.compose.runtime.derivedStateOf
@@ -12,6 +14,10 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import org.vita3k.emulator.data.InstallRepository
 import kotlinx.coroutines.launch
 import org.vita3k.emulator.NativeLib
 import org.vita3k.emulator.R
@@ -85,6 +91,7 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
             initialized = success
             if (success) {
                 firmwareInstallState = AppRepository.getFirmwareInstallState()
+                installBundledPkgj()
                 loadApps()
                 startCompatibilitySync()
                 startUpdateCheckIfEnabled()
@@ -279,6 +286,33 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
             } finally {
                 actionInProgress = false
             }
+        }
+    }
+
+    /** Installs the PKGj homebrew bundled in the APK assets once, on first launch. */
+    private suspend fun installBundledPkgj() {
+        val context = getApplication<Application>()
+        val prefs = context.getSharedPreferences("bundled_apps", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("pkgj_installed", false)) return
+        try {
+            if (AppRepository.getAppList().any { it.titleId == "PKGJ00000" }) {
+                prefs.edit().putBoolean("pkgj_installed", true).apply()
+                return
+            }
+            val tmp = File(context.cacheDir, "pkgj.vpk")
+            withContext(Dispatchers.IO) {
+                context.assets.open("preinstalled/pkgj.vpk").use { input ->
+                    tmp.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+            val ok = InstallRepository.installArchive(tmp.absolutePath, false) { _, _ -> }
+            tmp.delete()
+            if (ok) prefs.edit().putBoolean("pkgj_installed", true).apply()
+            else Log.w("AppsListViewModel", "Bundled PKGj install failed")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AppsListViewModel", "Bundled PKGj install error", e)
         }
     }
 

@@ -545,7 +545,8 @@ EXPORT(int, sceNetResolverCreate, const char *name, void *param, int flags) {
 
 EXPORT(int, sceNetResolverDestroy, int rid) {
     TRACY_FUNC(sceNetResolverDestroy, rid);
-    return UNIMPLEMENTED();
+    // the resolver id is a fake shared id (see sceNetResolverCreate), nothing to free
+    return 0;
 }
 
 EXPORT(int, sceNetResolverGetError) {
@@ -564,10 +565,12 @@ EXPORT(int, sceNetResolverStartNtoa, int rid, const char *hostname, SceNetInAddr
     TRACY_FUNC(sceNetResolverStartNtoa, rid, hostname, addr, timeout, retry, flags);
     struct hostent *resolved = gethostbyname(hostname);
     if (resolved == nullptr) {
+        LOG_WARN("Failed to resolve host '{}'", hostname ? hostname : "(null)");
         memset(addr, 0, sizeof(*addr));
         RET_NET_ERRNO(SCE_NET_ERROR_EHOSTUNREACH);
     }
     memcpy(addr, resolved->h_addr, sizeof(uint32_t));
+    LOG_INFO("Resolved host '{}'", hostname);
     return 0;
 }
 

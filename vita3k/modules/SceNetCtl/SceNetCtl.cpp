@@ -633,13 +633,14 @@ EXPORT(int, sceNetCtlInetGetInfo, int code, SceNetCtlInfo *info) {
             STUBBED("code SCE_NETCTL_INFO_GET_SECONDARY_DNS not implemented");
             break;
         case SCE_NETCTL_INFO_GET_HTTP_PROXY_CONFIG:
-            STUBBED("code SCE_NETCTL_INFO_GET_HTTP_PROXY_CONFIG not implemented");
+            // No proxy. Without this the guest struct stays uninitialised and libhttp may think a proxy is configured.
+            info->http_proxy_config = 0;
             break;
         case SCE_NETCTL_INFO_GET_HTTP_PROXY_SERVER:
-            STUBBED("code SCE_NETCTL_INFO_GET_HTTP_PROXY_SERVER not implemented");
+            info->http_proxy_server[0] = '\0';
             break;
         case SCE_NETCTL_INFO_GET_HTTP_PROXY_PORT:
-            STUBBED("code SCE_NETCTL_INFO_GET_HTTP_PROXY_PORT not implemented");
+            info->http_proxy_port = 0;
             break;
         default:
             LOG_ERROR("Unknown code:{}", log_hex(code));

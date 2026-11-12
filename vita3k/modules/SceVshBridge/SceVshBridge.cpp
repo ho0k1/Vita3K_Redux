@@ -172,6 +172,11 @@ EXPORT(SceUID, _vshKernelSearchModuleByName, const char *module_name, const void
     if (!module_name)
         return RET_ERROR(SCE_KERNEL_ERROR_ILLEGAL_ADDR);
 
+    // Vita3K installs and runs NoNpDrm-style content natively, so homebrew (e.g. PKGj) that checks for the
+    // NoNpDrm plugin must be told it is present, otherwise it refuses to install or run games.
+    if (strcmp(module_name, "NoNpDrm") == 0)
+        return 0x4E4F4E50; // arbitrary positive module id
+
     const std::lock_guard<std::mutex> lock(emuenv.kernel.mutex);
     for (const auto &[uid, mod] : emuenv.kernel.loaded_modules) {
         if (strcmp(mod->info.module_name, module_name) == 0)
