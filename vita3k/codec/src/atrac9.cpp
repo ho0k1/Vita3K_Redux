@@ -30,6 +30,7 @@ extern "C" {
 #include <util/log.h>
 
 #include <algorithm>
+#include <vector>
 
 struct FFMPEGAtrac9Info {
     uint32_t version;
@@ -84,6 +85,20 @@ void Atrac9DecoderState::load_state(const Atrac9DecoderSavedState *src) {
         std::copy_n(src->prev_values[0], 256, frame.Channels[0]->Mdct.ImdctPrevious);
     if (frame.Channels[1])
         std::copy_n(src->prev_values[1], 256, frame.Channels[1]->Mdct.ImdctPrevious);
+}
+
+// Upstream LibAtrac9 has no length-aware decode entry point (the Plus fork patched one in as Atrac9DecodeBounded).
+// Emulate it: decode from a zero-padded private copy so a truncated or corrupt frame can never read past the guest buffer.
+static int Atrac9DecodeBounded(void *handle, const uint8_t *data, int available, short *pcm, int *bytes_used) {
+    if (!data || available <= 0)
+        return ERR_UNPACK_SUPERFRAME_FLAG_INVALID;
+
+    constexpr size_t padding = 4096; // far larger than any ATRAC9 superframe, covers bit reader read-ahead
+    thread_local std::vector<uint8_t> padded;
+    padded.assign(static_cast<size_t>(available) + padding, 0);
+    std::copy_n(data, available, padded.begin());
+
+    return Atrac9Decode(handle, padded.data(), pcm, bytes_used);
 }
 
 bool Atrac9DecoderState::send(const uint8_t *data, uint32_t size) {
