@@ -1,8 +1,11 @@
 name: Android arm64 (fast)
 
-# Пока включён только ручной запуск: сабмодули в external/ ещё не подключены (см. README, шаг 0).
-# После шага 0 добавить сюда `push:` с paths-ignore для *.md и docs/.
 on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '_readme/**'
   workflow_dispatch:
 
 concurrency:
