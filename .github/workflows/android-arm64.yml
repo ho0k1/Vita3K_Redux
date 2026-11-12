@@ -18,13 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1          # история не нужна, сборка не зовёт git describe
           submodules: recursive
 
       - name: Restore native dependency cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             /usr/local/share/vcpkg/installed
@@ -33,7 +33,7 @@ jobs:
           restore-keys: |
             cache-android-native-
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -51,7 +51,7 @@ jobs:
           VCPKG_ROOT: /usr/local/share/vcpkg
         run: bash ./.ci/setup-android.sh
 
-      - uses: hendrikmuhs/ccache-action@v1.2.23
+      - uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           max-size: 2G
 
