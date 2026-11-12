@@ -54,6 +54,15 @@ android {
 	}
 
 	signingConfigs {
+		// Fixed debug key committed to the repo. CI runners generate a new random debug key on every run,
+		// which made each new APK refuse to install over the previous one ("App not installed").
+		// With one stable key every build can be installed as an update over the old one, keeping all data.
+		debug {
+			storeFile = file("fixed-debug.keystore")
+			storePassword = "android"
+			keyAlias = "androiddebugkey"
+			keyPassword = "android"
+		}
 		ci {
 			if (hasCiSigning) {
 				storeFile = file(signingStorePath)
