@@ -24,7 +24,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: PKGj's own CI needs g++-12, ubuntu-latest moved to 26.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +39,11 @@ jobs:
           done
 
       - name: Install apt dependencies
-        run: sudo apt-get install -y ninja-build g++-12 pipx && pipx install poetry
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++-12 pipx
+          pipx install poetry
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: actions/setup-python@v5
         with:
