@@ -41,6 +41,10 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
+#include <ctime>
+#include <deque>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <mutex>
@@ -97,6 +101,245 @@ void set_log_callback(std::function<void(std::string, int)> cb) {
     s_log_callback = std::move(cb);
 }
 
+// ---------------------------------------------------------------------------
+// Per-session log files
+//
+// Besides the long-running vita3k.log, three kinds of sessions are written to logs/sessions/:
+//   emulator_*  from process start until an app is launched (state before launching an app)
+//   app_*       one file per launched app (state while the app runs)
+//   pkgj_*      the same, for PKGj (title id PKGJ00000)
+// Only the newest SESSION_KEEP files of each kind are kept.
+//
+// The switch from one file to the next is done *inside the async logger's worker thread* when it sees a marker
+// message, so every line lands in the file of the session it was logged in, whatever the queue backlog is.
+// ---------------------------------------------------------------------------
+static constexpr size_t SESSION_KEEP = 3;
+static constexpr uintmax_t SESSION_SIZE_CAP = 48ull * 1024 * 1024;
+static const char *SESSION_SWITCH_MARKER = "[SESSION-SWITCH] ";
+
+class session_file_sink final : public spdlog::sinks::base_sink<std::mutex> {
+public:
+    ~session_file_sink() override {
+        close_file();
+    }
+
+    void request_switch(const fs::path &path, bool append) {
+        const std::lock_guard<std::mutex> lock(pending_mutex);
+        pending.push_back({ path, append });
+    }
+
+protected:
+    void sink_it_(const spdlog::details::log_msg &msg) override {
+        const std::string_view payload(msg.payload.data(), msg.payload.size());
+        const bool is_marker = payload.rfind(SESSION_SWITCH_MARKER, 0) == 0;
+
+        if (file && written < SESSION_SIZE_CAP) {
+            spdlog::memory_buf_t formatted;
+            formatter_->format(msg, formatted);
+            written += formatted.size();
+            std::fwrite(formatted.data(), 1, formatted.size(), file);
+            if (written >= SESSION_SIZE_CAP) {
+                static const char cap_msg[] = "[SESSION] size cap reached, the rest of this session is not written to this file\n";
+                std::fwrite(cap_msg, 1, sizeof(cap_msg) - 1, file);
+            }
+            if (is_marker || msg.level >= spdlog::level::warn)
+                std::fflush(file);
+        }
+
+        if (is_marker) {
+            Request request;
+            {
+                const std::lock_guard<std::mutex> lock(pending_mutex);
+                if (pending.empty())
+                    return;
+                request = pending.front();
+                pending.pop_front();
+            }
+            close_file();
+            file = std::fopen(request.path.string().c_str(), request.append ? "ab" : "wb");
+            written = 0;
+        }
+    }
+
+    void flush_() override {
+        if (file)
+            std::fflush(file);
+    }
+
+private:
+    struct Request {
+        fs::path path;
+        bool append = false;
+    };
+
+    void close_file() {
+        if (file) {
+            std::fflush(file);
+            std::fclose(file);
+            file = nullptr;
+        }
+    }
+
+    std::FILE *file = nullptr;
+    uintmax_t written = 0;
+    std::mutex pending_mutex;
+    std::deque<Request> pending;
+};
+
+static std::shared_ptr<session_file_sink> s_session_sink;
+static std::mutex s_session_api_mutex;
+static fs::path s_emulator_session_path;
+static bool s_app_session_active = false;
+static std::string s_session_name;
+static std::chrono::steady_clock::time_point s_session_start;
+
+static const char *session_prefix(SessionKind kind) {
+    switch (kind) {
+    case SessionKind::Emulator: return "emulator";
+    case SessionKind::App: return "app";
+    case SessionKind::Pkgj: return "pkgj";
+    }
+    return "session";
+}
+
+static std::string timestamp_for_filename() {
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm);
+    return buf;
+}
+
+static std::string sanitize_for_filename(const std::string &text) {
+    std::string out;
+    for (const char c : text) {
+        const bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '.';
+        out.push_back(ok ? c : '_');
+        if (out.size() >= 40)
+            break;
+    }
+    return out;
+}
+
+// delete the oldest files of this kind so that, together with the file about to be created, SESSION_KEEP remain
+static void rotate_sessions(const fs::path &dir, const std::string &prefix) {
+    std::vector<fs::path> files;
+    boost::system::error_code ec;
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (name.rfind(prefix + "_", 0) == 0 && it->path().extension() == ".log")
+            files.push_back(it->path());
+    }
+    std::sort(files.begin(), files.end()); // the file name starts with a sortable timestamp
+    while (files.size() + 1 > SESSION_KEEP) {
+        fs::remove(files.front(), ec);
+        files.erase(files.begin());
+    }
+}
+
+static void log_proc_lines(const char *when, const char *path, std::initializer_list<const char *> keys) {
+    std::ifstream in(path);
+    if (!in)
+        return;
+    std::string line;
+    while (std::getline(in, line)) {
+        for (const char *key : keys) {
+            if (line.rfind(key, 0) == 0) {
+                LOG_INFO("[STATE:{}] {}", when, line);
+                break;
+            }
+        }
+    }
+}
+
+void log_system_snapshot(const char *when) {
+#if defined(__linux__) || defined(__ANDROID__)
+    log_proc_lines(when, "/proc/meminfo", { "MemTotal", "MemAvailable", "SwapTotal", "SwapFree" });
+    log_proc_lines(when, "/proc/self/status", { "VmSize", "VmRSS", "VmHWM", "Threads" });
+    log_proc_lines(when, "/proc/loadavg", { "" });
+    // temperatures, useful to tell thermal throttling from a real hang (may be unreadable on some devices)
+    for (int zone = 0; zone < 48; zone++) {
+        std::ifstream type_file("/sys/class/thermal/thermal_zone" + std::to_string(zone) + "/type");
+        std::ifstream temp_file("/sys/class/thermal/thermal_zone" + std::to_string(zone) + "/temp");
+        std::string type, temp;
+        if (!type_file || !temp_file)
+            continue;
+        std::getline(type_file, type);
+        std::getline(temp_file, temp);
+        if (!type.empty() && !temp.empty())
+            LOG_INFO("[STATE:{}] thermal {} = {}", when, type, temp);
+    }
+#else
+    (void)when;
+#endif
+}
+
+static void switch_session_file(const fs::path &path, bool append) {
+    s_session_sink->request_switch(path, append);
+    // the marker is handled by session_file_sink in the logger thread, in order with all other messages
+    // the counter keeps the message unique, spdlog's duplicate filter would otherwise swallow a repeated marker
+    static std::atomic<unsigned> switch_counter{ 0 };
+    LOG_CRITICAL("{}#{} -> {}", SESSION_SWITCH_MARKER, ++switch_counter, path.filename().string());
+}
+
+void begin_session(SessionKind kind, const std::string &label) {
+    if (!s_session_sink)
+        return;
+    const std::lock_guard<std::mutex> lock(s_session_api_mutex);
+
+    const fs::path dir = s_log_file_path.parent_path() / "sessions";
+    boost::system::error_code ec;
+    fs::create_directories(dir, ec);
+
+    if (kind != SessionKind::Emulator && s_app_session_active) {
+        LOG_WARN("[SESSION] '{}' ends because a new session starts", s_session_name);
+        log_system_snapshot("end");
+    }
+
+    const std::string prefix = session_prefix(kind);
+    rotate_sessions(dir, prefix);
+    std::string name = prefix + "_" + timestamp_for_filename();
+    if (!label.empty())
+        name += "_" + sanitize_for_filename(label);
+    const fs::path path = dir / (name + ".log");
+
+    if (kind == SessionKind::Emulator)
+        s_emulator_session_path = path;
+    s_app_session_active = kind != SessionKind::Emulator;
+    s_session_name = name;
+    s_session_start = std::chrono::steady_clock::now();
+
+    switch_session_file(path, false);
+    LOG_INFO("[SESSION] begin {} ({}) label='{}'", name, prefix, label);
+    LOG_INFO("[SESSION] FORK BUILD seq {} compiled {} {}", FORK_BUILD_SEQ, __DATE__, __TIME__);
+    log_system_snapshot("start");
+}
+
+void end_session() {
+    if (!s_session_sink)
+        return;
+    const std::lock_guard<std::mutex> lock(s_session_api_mutex);
+    if (!s_app_session_active)
+        return;
+
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - s_session_start).count();
+    LOG_INFO("[SESSION] end {} after {} s", s_session_name, seconds);
+    log_system_snapshot("end");
+
+    s_app_session_active = false;
+    // back to the emulator session (state after the app), appending to the file of the start of this process
+    if (!s_emulator_session_path.empty()) {
+        switch_session_file(s_emulator_session_path, true);
+        LOG_INFO("[SESSION] back to emulator session after '{}'", s_session_name);
+        log_system_snapshot("after-app");
+    }
+}
+
 #ifdef __ANDROID__
 // flushing every line and copying it to logcat only pay for themselves at debug or trace level
 static void apply_android_log_policy(const spdlog::level::level_enum log_level) {
@@ -125,8 +368,11 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
     constexpr bool RELEASE_VERSION = true; // Nick
 
     s_log_file_path = root_paths.get_log_path() / LOG_FILE_NAME;
+    s_session_sink = std::make_shared<session_file_sink>();
+    sinks.push_back(s_session_sink);
     if (add_sink(root_paths.get_log_path() / LOG_FILE_NAME) != Success)
         return InitConfigFailed;
+    begin_session(SessionKind::Emulator, "");
     LOG_INFO("================= Vita3K session start =================");
     LOG_INFO("FORK BUILD seq {} compiled {} {} | {}", FORK_BUILD_SEQ, __DATE__, __TIME__, RELEASE_VERSION ? "Release Version" : FORK_BUILD_CHANGES);
 

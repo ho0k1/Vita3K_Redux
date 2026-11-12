@@ -44,6 +44,9 @@ import org.vita3k.emulator.ConnectedGamepad
 import androidx.compose.ui.platform.LocalContext
 import org.vita3k.emulator.data.CustomDriverLoadStatus
 import org.vita3k.emulator.data.EmulatorConfig
+import org.vita3k.emulator.data.LogExporter
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import org.vita3k.emulator.data.VitaDocumentsProvider
 import org.vita3k.emulator.data.FirmwareLinks
 import org.vita3k.emulator.data.UiLanguages
@@ -302,12 +305,15 @@ internal fun SettingsCategoryBody(
             onUpdate = onUpdate,
             onShowHelp = onShowHelp
         )
-        SettingsCategory.Debug -> DebugSettingsSection(
-            cfg = cfg,
-            isPerApp = isPerApp,
-            onUpdate = onUpdate,
-            onShowHelp = onShowHelp
-        )
+        SettingsCategory.Debug -> {
+            DebugSettingsSection(
+                cfg = cfg,
+                isPerApp = isPerApp,
+                onUpdate = onUpdate,
+                onShowHelp = onShowHelp
+            )
+            if (!isPerApp) LogExportSection(onShowHelp = onShowHelp)
+        }
         SettingsCategory.Emulator -> EmulatorSettingsSection(
             cfg = cfg,
             isPerApp = isPerApp,
@@ -1449,6 +1455,42 @@ private fun NetworkSettingsSection(
                 onShowHelp = onShowHelp
             )
         }
+    }
+}
+
+@Composable
+private fun LogExportSection(onShowHelp: (SettingsHelpEntry) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    val savedTemplate = stringResource(R.string.settings_debug_logs_saved)
+    val failedTemplate = stringResource(R.string.settings_debug_logs_failed)
+
+    SettingsSectionCard(
+        title = stringResource(R.string.settings_debug_logs_section),
+        summary = stringResource(R.string.settings_debug_logs_summary),
+        help = null,
+        onShowHelp = onShowHelp
+    ) {
+        FilledTonalButton(
+            enabled = !busy,
+            onClick = {
+                busy = true
+                status = null
+                scope.launch {
+                    status = try {
+                        String.format(savedTemplate, LogExporter.exportToDownloads(context))
+                    } catch (e: Exception) {
+                        String.format(failedTemplate, e.message ?: e.javaClass.simpleName)
+                    }
+                    busy = false
+                }
+            }
+        ) {
+            Text(stringResource(R.string.settings_debug_logs_export))
+        }
+        status?.let { Text(it) }
     }
 }
 

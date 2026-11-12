@@ -69,6 +69,18 @@ void flush();
 void set_log_callback(std::function<void(std::string, int)> cb);
 void set_crash_context_provider(std::string (*provider)());
 
+// Per-session log files in logs/sessions/ (the newest 3 files of each kind are kept).
+enum class SessionKind {
+    Emulator, // from process start until an app is launched
+    App, // an app launched by the user
+    Pkgj, // PKGj (title id PKGJ00000)
+};
+void begin_session(SessionKind kind, const std::string &label);
+// ends an App/Pkgj session and returns to the emulator session
+void end_session();
+// writes memory, thread count, load and temperatures to the log
+void log_system_snapshot(const char *when);
+
 } // namespace logging
 
 #define RET_ERROR(error)                                                            \

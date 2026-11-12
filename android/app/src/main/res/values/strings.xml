@@ -550,6 +550,11 @@
 
     <!-- Settings — Debug tab -->
     <string name="settings_debug_diagnostics">Diagnostics</string>
+    <string name="settings_debug_logs_section">Logs</string>
+    <string name="settings_debug_logs_summary">Packs the emulator log and the last 3 sessions of each kind (emulator, app, PKGj) into a zip file in the Downloads folder.</string>
+    <string name="settings_debug_logs_export">Save logs to Downloads (zip)</string>
+    <string name="settings_debug_logs_saved">Saved to Downloads: %1$s</string>
+    <string name="settings_debug_logs_failed">Could not save logs: %1$s</string>
     <string name="settings_debug_logging_section">Logging</string>
     <string name="settings_debug_graphics_section">Graphics</string>
     <string name="settings_debug_misc_section">Miscellaneous</string>

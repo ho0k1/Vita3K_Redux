@@ -58,8 +58,12 @@ bool AppSessionController::begin_launch(const AppLaunchRequest &launch_request, 
         return false;
     }
 
-    if (!setup_game_launch(emuenv, launch_request.app_path, update_last_time_used))
+    logging::begin_session(launch_request.app_path == "PKGJ00000" ? logging::SessionKind::Pkgj : logging::SessionKind::App, launch_request.app_path);
+
+    if (!setup_game_launch(emuenv, launch_request.app_path, update_last_time_used)) {
+        logging::end_session();
         return false;
+    }
 
     active_launch_request = launch_request;
     renderer_initialized = false;
@@ -213,6 +217,8 @@ void AppSessionController::stop(const AppSessionStopReason reason) {
         std::lock_guard<std::mutex> lock(mutex);
         reset_session_tracking();
     }
+
+    logging::end_session();
 }
 
 void AppSessionController::apply_runtime_state_locked() {
