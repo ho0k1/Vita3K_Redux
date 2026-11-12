@@ -1,0 +1,71 @@
+name: Android arm64 (fast)
+
+# Пока включён только ручной запуск: сабмодули в external/ ещё не подключены (см. README, шаг 0).
+# После шага 0 добавить сюда `push:` с paths-ignore для *.md и docs/.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true   # новый пуш отменяет предыдущую сборку
+
+jobs:
+  android-build:
+    name: Android arm64-v8a
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1          # история не нужна, сборка не зовёт git describe
+          submodules: recursive
+
+      - name: Restore native dependency cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            /usr/local/share/vcpkg/installed
+            /usr/local/share/vcpkg/packages
+          key: cache-android-native-${{ hashFiles('CMakeLists.txt', 'cmake/**', '.ci/**', 'android/app/build.gradle', 'vcpkg.json') }}
+          restore-keys: |
+            cache-android-native-
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          add-job-summary: on-failure
+          cache-provider: basic
+          validate-wrappers: false
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Set up Android build environment
+        env:
+          VCPKG_ROOT: /usr/local/share/vcpkg
+        run: bash ./.ci/setup-android.sh
+
+      - uses: hendrikmuhs/ccache-action@v1.2.23
+        with:
+          max-size: 2G
+
+      - name: Compute artifact paths
+        run: |
+          echo "ARTIFACT_NAME=vita3k-plus-pkgj-$(git rev-parse --short HEAD)-android-arm64" >> "$GITHUB_ENV"
+          echo "ARTIFACT_DIR=artifacts/out" >> "$GITHUB_ENV"
+
+      - name: Build APK (arm64-v8a only)
+        env:
+          VCPKG_ROOT: /usr/local/share/vcpkg
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        run: bash ./.ci/build-android.sh "${{ env.ARTIFACT_DIR }}"
+
+      - run: ccache -s
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_DIR }}
