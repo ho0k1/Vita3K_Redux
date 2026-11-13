@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import org.vita3k.emulator.NativeLib
 import org.vita3k.emulator.MainActivity
 import org.vita3k.emulator.data.AppStorage
 import org.vita3k.emulator.data.AppInfo
@@ -91,6 +92,20 @@ fun AppNavigation(
     LaunchedEffect(appsListViewModel.initialized) {
         if (appsListViewModel.initialized) {
             settingsViewModel.preloadGlobalSettings()
+        }
+    }
+
+    // PKGj installs games in the background: show them in the list without pressing Refresh
+    LaunchedEffect(appsListViewModel.initialized) {
+        if (!appsListViewModel.initialized) return@LaunchedEffect
+        var last = runCatching { NativeLib.getAppsChangedCounter() }.getOrDefault(0)
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            val now = runCatching { NativeLib.getAppsChangedCounter() }.getOrDefault(last)
+            if (now != last) {
+                last = now
+                appsListViewModel.reloadAppsList()
+            }
         }
     }
 

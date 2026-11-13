@@ -30,6 +30,7 @@
 #include <overlay/display_manager.h>
 #include <renderer/functions.h>
 #include <nids/functions.h>
+#include <util/background_activity.h>
 #include <util/log.h>
 #include <util/session_diag.h>
 
@@ -100,7 +101,14 @@ bool AppSessionController::begin_launch(const AppLaunchRequest &launch_request, 
         return false;
     }
 
-    emuenv.install_content_hook = [this](const fs::path &path) { return install_contents(this->emuenv, path); };
+    emuenv.install_content_hook = [this](const fs::path &path) {
+        const uint32_t installed = install_contents(this->emuenv, path);
+        // the apps list must show the new game/DLC right away, without pressing Refresh
+        if (installed)
+            scan_apps(this->emuenv);
+            background_activity::apps_changed.fetch_add(1, std::memory_order_relaxed);
+        return installed;
+    };
 
     logging::begin_session(launch_request.app_path == "PKGJ00000" ? logging::SessionKind::Pkgj : logging::SessionKind::App, launch_request.app_path);
 

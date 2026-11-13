@@ -12,6 +12,8 @@ namespace background_activity {
 inline std::atomic<int64_t> last_net_rx_ms{ INT64_MIN / 2 };
 inline std::atomic<int64_t> last_io_write_ms{ INT64_MIN / 2 };
 inline std::atomic<uint64_t> net_rx_bytes{ 0 };
+// bumped each time an install changed the list of installed apps (the UI reloads the list)
+inline std::atomic<uint32_t> apps_changed{ 0 };
 // number of installs (scePromoterUtility) running right now
 inline std::atomic<int> promoting{ 0 };
 

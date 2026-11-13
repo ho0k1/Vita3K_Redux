@@ -142,6 +142,8 @@ object NativeLib {
     external fun isBackgroundWorkActive(): Boolean
     /** Text of PKGj's status file (key=value lines: state, name, percent, done, total, queue, attempt, max, kind, msg, age). Empty if none. */
     external fun getPkgjStatus(): String
+    /** Grows each time PKGj installed something: the apps list must be reloaded. */
+    external fun getAppsChangedCounter(): Int
     /** Bytes received by the guest from the network since the process started. */
     external fun getNetReceivedBytes(): Long
     /** Detail of the per-session log files: -1 same as the log level, else a spdlog level (0 trace, 1 debug, 2 info). */

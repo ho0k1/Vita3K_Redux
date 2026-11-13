@@ -156,6 +156,11 @@ Java_org_vita3k_emulator_NativeLib_getPkgjStatus(JNIEnv *env, jclass) {
     return env->NewStringUTF(read_pkgj_status().c_str());
 }
 
+JNIEXPORT jint JNICALL
+Java_org_vita3k_emulator_NativeLib_getAppsChangedCounter(JNIEnv *, jclass) {
+    return static_cast<jint>(background_activity::apps_changed.load(std::memory_order_relaxed));
+}
+
 // total bytes received by the guest from the network since the process started
 JNIEXPORT jlong JNICALL
 Java_org_vita3k_emulator_NativeLib_getNetReceivedBytes(JNIEnv *, jclass) {
