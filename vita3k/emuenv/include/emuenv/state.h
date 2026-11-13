@@ -20,6 +20,7 @@
 #include <emuenv/window.h>
 #include <util/fs.h>
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -122,6 +123,8 @@ private:
 public:
     // App info contained in its `param.sfo` file
     sfo::SfoAppInfo &app_info;
+    // installs the contents found in a host folder; set by the app session, used by ScePromoterUtil (PKGj)
+    std::function<uint32_t(const fs::path &)> install_content_hook;
     std::string app_path{};
     std::string license_content_id{};
     std::string license_title_id{};

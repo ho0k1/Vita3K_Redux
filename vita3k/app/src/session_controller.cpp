@@ -31,6 +31,9 @@
 #include <renderer/functions.h>
 #include <util/log.h>
 
+// defined in interface.cpp
+uint32_t install_contents(EmuEnvState &emuenv, const fs::path &path);
+
 namespace app {
 
 AppSessionController::AppSessionController(EmuEnvState &emuenv)
@@ -57,6 +60,8 @@ bool AppSessionController::begin_launch(const AppLaunchRequest &launch_request, 
             launch_request.app_path, to_string(phase));
         return false;
     }
+
+    emuenv.install_content_hook = [this](const fs::path &path) { return install_contents(this->emuenv, path); };
 
     logging::begin_session(launch_request.app_path == "PKGJ00000" ? logging::SessionKind::Pkgj : logging::SessionKind::App, launch_request.app_path);
 
