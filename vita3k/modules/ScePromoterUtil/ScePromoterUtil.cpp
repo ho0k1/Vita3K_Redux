@@ -18,6 +18,7 @@
 #include <module/module.h>
 
 #include <io/functions.h>
+#include <packages/sfo.h>
 #include <util/log.h>
 #include <util/tracy.h>
 
