@@ -1,0 +1,130 @@
+diff --git a/src/gameview.cpp b/src/gameview.cpp
+index 3225865..21407fc 100644
+--- a/src/gameview.cpp
++++ b/src/gameview.cpp
+@@ -141,10 +141,6 @@ GameView::GameView(
+     if (is_vita_mode())
+     {
+         _patch_info_fetcher = std::make_unique<PatchInfoFetcher>(item->titleid);
+-        _description_fetcher =
+-                std::make_unique<DescriptionFetcher>(item);
+-        _screenshot_fetcher =
+-                std::make_unique<ScreenshotFetcher>(config, item);
+     }
+ 
+     refresh();
+@@ -168,8 +164,9 @@ void GameView::render()
+                     ImGuiWindowFlags_NoSavedSettings);
+ 
+     // ── Layout constants ─────────────────────────────────────────────────────
+-    const int tsz = std::max(0, std::min(
+-            _config->thumbnail_size, kThumbSizeCount - 1));
++    // Vita3K: no cover image or screenshots (thumbnail panel is always off)
++    const int tsz = 0;
++    (void)kThumbSizeCount;
+     const float cover_w  = kThumbSizes[tsz].w;
+     const float cover_h  = kThumbSizes[tsz].h;
+     const bool  two_col  = (cover_w > 0.f);
+@@ -640,45 +637,6 @@ void GameView::render()
+         ImGui::Text("Personal Notes");
+         ImGui::Spacing();
+ 
+-        // Flag — compact cycling selector  [ < ]  [label]  [ > ]
+-        {
+-            auto cycle = [&](int delta)
+-            {
+-                int fi = (static_cast<int>(_annotation.flag) + delta +
+-                          UserFlagCount) %
+-                         UserFlagCount;
+-                _annotation.flag = static_cast<UserFlag>(fi);
+-                _annotationDb->set(_item->titleid, _annotation);
+-                _item->user_flag = _annotation.flag;
+-            };
+-
+-            ImGui::Text("Flag:");
+-            ImGui::SameLine();
+-
+-            if (ImGui::Button("< ##flagprev"))
+-                cycle(-1);
+-
+-            ImGui::SameLine();
+-
+-            const bool active = (_annotation.flag != UserFlag::None);
+-            if (active)
+-                ImGui::PushStyleColor(
+-                        ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+-            if (ImGui::Button(
+-                        fmt::format(
+-                                "{:<18}###flaglabel",
+-                                user_flag_label(_annotation.flag))
+-                                .c_str(),
+-                        ImVec2(180.f, 0)))
+-                cycle(+1);
+-            if (active)
+-                ImGui::PopStyleColor();
+-
+-            ImGui::SameLine();
+-            if (ImGui::Button("> ##flagnext"))
+-                cycle(+1);
+-        }
+-
+         ImGui::Spacing();
+ 
+         // Comment field: shown as a scrollable blue box, like description.
+diff --git a/src/pkgi.cpp b/src/pkgi.cpp
+index e33833b..5c5bd5a 100644
+--- a/src/pkgi.cpp
++++ b/src/pkgi.cpp
+@@ -856,12 +856,7 @@ void pkgi_do_main(Downloader& downloader, pkgi_input* input)
+                 line_height);
+         item->selected = std::find(selected_items.begin(), selected_items.end(), item) != selected_items.end();
+         {
+-            std::string display_name;
+-            if (item->user_flag != UserFlag::None)
+-                display_name = fmt::format("{} {}",
+-                        user_flag_symbol(item->user_flag), item->name);
+-            else
+-                display_name = item->name;
++            const std::string& display_name = item->name;
+             pkgi_draw_text(col_name, y,
+                     item->selected ? PKGI_COLOR_TEXT_SELECTED : PKGI_COLOR_TEXT,
+                     display_name.c_str());
+@@ -1014,17 +1009,8 @@ void pkgi_do_main(Downloader& downloader, pkgi_input* input)
+         */
+         if (mode == ModeGames || mode == ModePspGames)
+         {
++            // flags were removed; the S button does nothing here
+             input->pressed &= ~PKGI_BUTTON_S;
+-            DbItem* item = db->get(selected_item);
+-            if (item && annotation_db)
+-            {
+-                // Cycle flag forward (wraps around)
+-                const int next = (static_cast<int>(item->user_flag) + 1) % UserFlagCount;
+-                item->user_flag = static_cast<UserFlag>(next);
+-                UserAnnotation ann = annotation_db->get(item->titleid);
+-                ann.flag = item->user_flag;
+-                annotation_db->set(item->titleid, ann);
+-            }
+         }
+         else if (mode == ModeDlcs) 
+         {
+@@ -1476,7 +1462,9 @@ void pkgi_start_download(
+                         "NoPspEmuDrm is required to queue PSP installs in LiveArea");
+ 
+             if (
+-                mode == ModeGames || mode == ModeDlcs || mode == ModeDemos || mode == ModeThemes ||
++                // Vita3K: games and DLCs are downloaded directly and installed through
++                // scePromoterUtility (there is no LiveArea download service to queue to)
++                mode == ModeDemos || mode == ModeThemes ||
+                 use_psp_bgdl ||
+                 (mode == ModePsmGames && pkgi_is_module_present("NoPsmDrm")))
+             {
+@@ -1485,7 +1473,7 @@ void pkgi_start_download(
+                 }
+ #else // PKGI_SIMULATOR — no bgdl / module checks; always direct download
+             [[maybe_unused]] const bool use_psp_bgdl = false;
+-            if (mode == ModeGames || mode == ModeDlcs || mode == ModeDemos || mode == ModeThemes)
++            if (mode == ModeDemos || mode == ModeThemes)
+             {
+ #endif
+                 

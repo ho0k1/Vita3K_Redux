@@ -301,8 +301,17 @@ EXPORT(int, _vshSblGcAuthMgrMlnpsnlAuth2) {
     return UNIMPLEMENTED();
 }
 
-EXPORT(int, _vshSblGetSystemSwVersion) {
-    return UNIMPLEMENTED();
+EXPORT(int, _vshSblGetSystemSwVersion, void *info) {
+    // same structure as sceKernelGetSystemSwVersion: size, version string[28], version, unk
+    if (!info)
+        return 0x80010016; // EINVAL
+    uint8_t *raw = static_cast<uint8_t *>(info);
+    const uint32_t size = *reinterpret_cast<uint32_t *>(raw);
+    memset(raw, 0, 0x24);
+    *reinterpret_cast<uint32_t *>(raw) = size ? size : 0x24;
+    strncpy(reinterpret_cast<char *>(raw + 4), "3.74", 27);
+    *reinterpret_cast<uint32_t *>(raw + 0x20) = 0x03740011;
+    return 0;
 }
 
 EXPORT(int, _vshSblSsCreatePassPhrase) {

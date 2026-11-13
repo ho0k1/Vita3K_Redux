@@ -26,6 +26,25 @@
 #include <util/tracy.h>
 TRACY_MODULE_NAME(SceModulemgr);
 
+// Firmware version reported to apps (PKGj compares it with the firmware a game requires)
+struct FwInfo {
+    uint32_t size;
+    char versionString[28];
+    uint32_t version;
+    uint32_t unk;
+};
+
+static int fill_fw_info(FwInfo *info) {
+    if (!info)
+        return 0x80010016; // EINVAL
+    const uint32_t size = info->size;
+    memset(info, 0, sizeof(*info));
+    info->size = size ? size : sizeof(*info);
+    strncpy(info->versionString, "3.74", sizeof(info->versionString) - 1);
+    info->version = 0x03740011;
+    return 0;
+}
+
 EXPORT(int, _sceKernelCloseModule) {
     TRACY_FUNC(_sceKernelCloseModule);
     return UNIMPLEMENTED();
@@ -168,9 +187,9 @@ EXPORT(int, sceKernelGetModuleList, int flags, SceUID *modids, int *num) {
     return SCE_KERNEL_OK;
 }
 
-EXPORT(int, sceKernelGetSystemSwVersion) {
-    TRACY_FUNC(sceKernelGetSystemSwVersion);
-    return UNIMPLEMENTED();
+EXPORT(int, sceKernelGetSystemSwVersion, FwInfo *info) {
+    TRACY_FUNC(sceKernelGetSystemSwVersion, info);
+    return fill_fw_info(info);
 }
 
 EXPORT(int, sceKernelInhibitLoadingModule) {

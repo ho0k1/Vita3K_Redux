@@ -93,6 +93,10 @@
 
 Workflow `Build PKGj` собирает патченый `pkgj.vpk` (VitaSDK через Conan), кладёт его в `android/app/assets/preinstalled/` и запускает сборку APK. Эмулятор переустанавливает встроенный PKGj, когда файл `pkgj.version` меняется.
 
+Патч `pkgj/0002-direct-install-no-media-no-flags.patch`: игры и DLC скачиваются напрямую и ставятся через `scePromoterUtility` (в v0.61 они по умолчанию уходят в очередь LiveArea через закрытую службу `SceShellSvc`, которой в эмуляторе нет, из-за чего PKGj падал на нулевом адресе). Также убраны обложка, скриншоты, описание и Flag.
+
+Эмулятор теперь отдаёт версию прошивки 3.74 (`sceKernelGetSystemSwVersion`, `_vshSblGetSystemSwVersion`), а проверка существования файла (`stat`) больше не пишет ошибки в лог (PKGj проверяет `.resume` для каждой игры списка).
+
 ## Логи
 
 Три вида сессионных логов (эмулятор / игра / PKGj) с ротацией «3 последних» и кнопка сохранения в zip в Downloads: см. [docs/LOGGING.md](docs/LOGGING.md).
