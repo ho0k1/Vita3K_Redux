@@ -32,7 +32,7 @@ std::string read_pkgj_status() {
     if (!emuenv)
         return {};
     std::error_code ec;
-    const auto path = emuenv->vita_fs_path / "ux0" / "pkgj" / "status.txt";
+    const std::filesystem::path path = (emuenv->vita_fs_path / "ux0" / "pkgj" / "status.txt").string();
     const auto mtime = std::filesystem::last_write_time(path, ec);
     if (ec)
         return {};

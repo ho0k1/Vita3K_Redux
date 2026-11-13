@@ -377,7 +377,7 @@ static fs::path marker_path() {
 }
 
 static void write_marker(const std::string &text) {
-    std::ofstream out(marker_path(), std::ios::trunc);
+    std::ofstream out(marker_path().string(), std::ios::trunc);
     out << text << "\n";
 }
 
@@ -385,7 +385,7 @@ static void check_previous_marker() {
     boost::system::error_code ec;
     if (!fs::exists(marker_path(), ec))
         return;
-    std::ifstream in(marker_path());
+    std::ifstream in(marker_path().string());
     std::string text, line;
     while (std::getline(in, line))
         text += (text.empty() ? "" : " | ") + line;
@@ -396,7 +396,7 @@ static void check_previous_marker() {
 void note_session_event(const char *what) {
     // no lock: this is also called from the crash handler
     {
-        std::ofstream out(marker_path(), std::ios::app);
+        std::ofstream out(marker_path().string(), std::ios::app);
         out << "event: " << what << "\n";
     }
     LOG_CRITICAL("[SESSION] event: {}", what);
@@ -442,7 +442,7 @@ void set_session_level(int level) {
     s_session_level_override = level < 0 ? -1 : std::min(level, static_cast<int>(spdlog::level::off));
     boost::system::error_code ec;
     fs::create_directories(session_level_path().parent_path(), ec);
-    std::ofstream out(session_level_path(), std::ios::trunc);
+    std::ofstream out(session_level_path().string(), std::ios::trunc);
     out << s_session_level_override << "\n";
     apply_levels();
     LOG_INFO("[SESSION] session log detail is now {}", s_session_level_override < 0 ? std::string("same as the log level") : std::to_string(s_session_level_override));
@@ -453,7 +453,7 @@ int get_session_level() {
 }
 
 static void load_session_level() {
-    std::ifstream in(session_level_path());
+    std::ifstream in(session_level_path().string());
     int level = -1;
     if (in >> level)
         s_session_level_override = level < 0 ? -1 : std::min(level, static_cast<int>(spdlog::level::off));
