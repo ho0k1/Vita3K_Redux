@@ -19,7 +19,7 @@ import java.util.zip.ZipOutputStream
 /**
  * Packs the emulator logs into one zip in the public Downloads folder:
  *  - vita3k.log               the long-running log
- *  - sessions/*.log           the newest 3 sessions of each kind (emulator, app, pkgj)
+ *  - sessions/ (every .log file)           the newest 3 sessions of each kind (emulator, app, pkgj)
  *  - device-info.txt          device and build details
  */
 internal object LogExporter {
