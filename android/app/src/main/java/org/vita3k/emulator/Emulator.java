@@ -249,6 +249,20 @@ public class Emulator extends SDLActivity
         refreshNativeDisplayRotation();
         updateControllerConnectionState();
         resumeFromBackgroundIfNeeded();
+        maybeRequestNotificationPermission();
+    }
+
+    private boolean notificationPermissionAsked = false;
+
+    // PKGj can keep downloading in the background and shows its progress in a notification
+    private void maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33 || notificationPermissionAsked)
+            return;
+        if (!"PKGJ00000".equals(resolveCurrentTitleId(getIntent())))
+            return;
+        notificationPermissionAsked = true;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{ android.Manifest.permission.POST_NOTIFICATIONS }, 0x318);
     }
 
     @Override
@@ -1590,6 +1604,15 @@ public class Emulator extends SDLActivity
             return;
         }
 
+        // PKGj is downloading or installing: keep emulating in the background (foreground service)
+        try {
+            if (NativeLib.INSTANCE.isBackgroundWorkActive()) {
+                DownloadKeepAliveService.start(this);
+                return;
+            }
+        } catch (Throwable ignored) {
+        }
+
         try {
             NativeLib.INSTANCE.setPauseReasonEnabled(NativeLib.PAUSE_REASON_BACKGROUND, true);
         } catch (Throwable ignored) {
@@ -1597,6 +1620,7 @@ public class Emulator extends SDLActivity
     }
 
     private void resumeFromBackgroundIfNeeded() {
+        DownloadKeepAliveService.stop(this);
         final View anchor = mSurface != null ? mSurface : getWindow().getDecorView();
         anchor.post(() -> {
             boolean running = false;

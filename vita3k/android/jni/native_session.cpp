@@ -11,6 +11,7 @@
 #include <app/functions.h>
 #include <ime/keyboard.h>
 #include <io/state.h>
+#include <util/background_activity.h>
 #include <motion/functions.h>
 
 #include <SDL3/SDL_events.h>
@@ -81,6 +82,24 @@ JNIEXPORT jboolean JNICALL
 Java_org_vita3k_emulator_NativeLib_isAppRunning(JNIEnv *, jclass) {
     auto *controller = get_app_session_controller();
     return controller && controller->has_active_session() ? JNI_TRUE : JNI_FALSE;
+}
+
+// true while PKGj is downloading or installing something (data came in, files were written or an install is running)
+JNIEXPORT jboolean JNICALL
+Java_org_vita3k_emulator_NativeLib_isBackgroundWorkActive(JNIEnv *, jclass) {
+    auto *controller = get_app_session_controller();
+    auto *emuenv = get_emuenv();
+    if (!controller || !emuenv || !controller->is_running())
+        return JNI_FALSE;
+    if (emuenv->io.title_id != "PKGJ00000")
+        return JNI_FALSE;
+    return background_activity::is_active(20000) ? JNI_TRUE : JNI_FALSE;
+}
+
+// total bytes received by the guest from the network since the process started
+JNIEXPORT jlong JNICALL
+Java_org_vita3k_emulator_NativeLib_getNetReceivedBytes(JNIEnv *, jclass) {
+    return static_cast<jlong>(background_activity::net_rx_bytes.load(std::memory_order_relaxed));
 }
 
 JNIEXPORT void JNICALL

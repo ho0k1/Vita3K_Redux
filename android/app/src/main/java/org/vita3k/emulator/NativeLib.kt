@@ -138,6 +138,10 @@ object NativeLib {
     external fun setInputIntercepted(intercepted: Boolean): Boolean
     /** Enables or clears a specific native pause reason bit for the running app session. */
     external fun setPauseReasonEnabled(reasonMask: Int, enabled: Boolean): Boolean
+    /** True while PKGj is downloading/installing: the app may keep running in the background. */
+    external fun isBackgroundWorkActive(): Boolean
+    /** Bytes received by the guest from the network since the process started. */
+    external fun getNetReceivedBytes(): Long
     /** Returns true when an app session is currently active. */
     external fun isAppRunning(): Boolean
     /** Requests a graceful shutdown of the currently running app session. */

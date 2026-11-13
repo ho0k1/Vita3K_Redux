@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <util/background_activity.h>
 #include "SceNet.h"
 
 #include <kernel/state.h>
@@ -517,14 +518,18 @@ EXPORT(int, sceNetRecv, int sid, void *buf, unsigned int len, int flags) {
     TRACY_FUNC(sceNetRecv, sid, buf, len, flags);
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
-    RET_NET_ERRNO(sock ? sock->recv_packet(buf, len, flags, nullptr, 0) : SCE_NET_ERROR_EBADF);
+    const int received = sock ? sock->recv_packet(buf, len, flags, nullptr, 0) : SCE_NET_ERROR_EBADF;
+    background_activity::note_net_rx(received);
+    RET_NET_ERRNO(received);
 }
 
 EXPORT(int, sceNetRecvfrom, int sid, void *buf, unsigned int len, int flags, SceNetSockaddr *from, unsigned int *fromlen) {
     TRACY_FUNC(sceNetRecvfrom, sid, buf, len, flags, from, fromlen);
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
-    RET_NET_ERRNO(sock ? sock->recv_packet(buf, len, flags, from, fromlen) : SCE_NET_ERROR_EBADF);
+    const int received = sock ? sock->recv_packet(buf, len, flags, from, fromlen) : SCE_NET_ERROR_EBADF;
+    background_activity::note_net_rx(received);
+    RET_NET_ERRNO(received);
 }
 
 EXPORT(int, sceNetRecvmsg) {

@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <util/background_activity.h>
 #include <chrono>
 
 #include <io/device.h>
@@ -678,6 +679,7 @@ int read_file_into_guest(MemState &mem, Address dst, IOState &io, SceUID fd, Sce
 }
 
 int write_file_at(const SceUID fd, const void *data, const SceSize size, const SceOff offset, IOState &io, const char *export_name) {
+    background_activity::note_io_write();
     io.guest_io_ops.fetch_add(1, std::memory_order_relaxed);
     assert(data != nullptr);
     if (fd < 0)
@@ -730,6 +732,7 @@ int read_file(void *data, IOState &io, const SceUID fd, const SceSize size, cons
 }
 
 int write_file(SceUID fd, const void *data, const SceSize size, const IOState &io, const char *export_name) {
+    background_activity::note_io_write();
     io.guest_io_ops.fetch_add(1, std::memory_order_relaxed);
     assert(data != nullptr);
     assert(size >= 0);

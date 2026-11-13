@@ -19,6 +19,7 @@
 
 #include <io/functions.h>
 #include <packages/sfo.h>
+#include <util/background_activity.h>
 #include <util/log.h>
 #include <util/tracy.h>
 
@@ -47,6 +48,7 @@ static int promote_pkg(EmuEnvState &emuenv, const char *path, const char *export
     }
 
     LOG_INFO("{}: installing '{}' from {}", export_name, path, host_path);
+    background_activity::PromoteScope promoting;
 
     // the installer parses the package's param.sfo into emuenv.app_info, which belongs to the running app
     const sfo::SfoAppInfo saved_app_info = emuenv.app_info;
