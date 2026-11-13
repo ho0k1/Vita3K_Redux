@@ -142,6 +142,9 @@ object NativeLib {
     external fun isBackgroundWorkActive(): Boolean
     /** Bytes received by the guest from the network since the process started. */
     external fun getNetReceivedBytes(): Long
+    /** Detail of the per-session log files: -1 same as the log level, else a spdlog level (0 trace, 1 debug, 2 info). */
+    external fun setSessionLogLevel(level: Int)
+    external fun getSessionLogLevel(): Int
     /** Returns true when an app session is currently active. */
     external fun isAppRunning(): Boolean
     /** Requests a graceful shutdown of the currently running app session. */

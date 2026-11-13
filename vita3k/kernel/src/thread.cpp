@@ -1629,9 +1629,12 @@ void ThreadState::run_loop() {
                 // breadcrumbs for the hang dump: free here, a global lock inside call_import
                 last_import_nid = nid;
                 last_import_lr = read_lr(*cpu);
-                push_import_ring(nid, last_import_lr);
+                const uint8_t ring_slot = import_ring_pos;
+                const uint32_t ring_args[4] = { read_reg(*cpu, 0), read_reg(*cpu, 1), read_reg(*cpu, 2), read_reg(*cpu, 3) };
+                push_import_ring(nid, last_import_lr, ring_args);
                 hle_enters.store(hle_enters.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
                 kernel.call_import(*cpu, nid, id);
+                set_import_ret(ring_slot, read_reg(*cpu, 0));
                 hle_returns.store(hle_returns.load(std::memory_order_relaxed) + 1, std::memory_order_release);
                 if (gated_wakees.load() > 0)
                     wake_gate_notify();
@@ -1679,9 +1682,12 @@ void ThreadState::run_loop() {
                     const uint32_t nid = *Ptr<uint32_t>(read_pc(*cpu) + 4).get(mem);
                     last_import_nid = nid;
                     last_import_lr = read_lr(*cpu);
-                    push_import_ring(nid, last_import_lr);
+                    const uint8_t ring_slot = import_ring_pos;
+                    const uint32_t ring_args[4] = { read_reg(*cpu, 0), read_reg(*cpu, 1), read_reg(*cpu, 2), read_reg(*cpu, 3) };
+                    push_import_ring(nid, last_import_lr, ring_args);
                     hle_enters.store(hle_enters.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
                     kernel.call_import(*cpu, nid, id);
+                    set_import_ret(ring_slot, read_reg(*cpu, 0));
                     hle_returns.store(hle_returns.load(std::memory_order_relaxed) + 1, std::memory_order_release);
                     if (gated_wakees.load() > 0)
                         wake_gate_notify();

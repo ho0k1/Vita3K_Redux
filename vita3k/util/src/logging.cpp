@@ -21,6 +21,7 @@
 #include <typeinfo>
 #include <util/fork_build.h>
 #include <util/log.h>
+#include <util/session_diag.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -47,7 +48,10 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <condition_variable>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 namespace logging {
@@ -279,6 +283,182 @@ void log_system_snapshot(const char *when) {
 #endif
 }
 
+// ---------------------------------------------------------------------------
+// Stage 2-4 additions: resource sampling, abnormal end detection, independent session verbosity
+// ---------------------------------------------------------------------------
+
+// --- periodic resource sampling while an app runs -------------------------------------------------------
+static std::thread s_sampler_thread;
+static std::mutex s_sampler_mutex;
+static std::condition_variable s_sampler_cv;
+static bool s_sampler_stop = false;
+
+static std::string read_proc_value(const char *path, const char *key) {
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind(key, 0) == 0) {
+            std::string value = line.substr(std::string(key).size());
+            const size_t first = value.find_first_not_of(" \t:");
+            return first == std::string::npos ? std::string() : value.substr(first);
+        }
+    }
+    return {};
+}
+
+static long kb_of(const std::string &text) {
+    return text.empty() ? -1 : std::atol(text.c_str());
+}
+
+static void log_tick(uint64_t &last_calls, std::chrono::steady_clock::time_point &last_time, const std::chrono::steady_clock::time_point start) {
+#if defined(__linux__) || defined(__ANDROID__)
+    const auto now = std::chrono::steady_clock::now();
+    const long rss_kb = kb_of(read_proc_value("/proc/self/status", "VmRSS"));
+    const std::string threads = read_proc_value("/proc/self/status", "Threads");
+    const long avail_kb = kb_of(read_proc_value("/proc/meminfo", "MemAvailable"));
+    std::string load;
+    {
+        std::ifstream in("/proc/loadavg");
+        in >> load;
+    }
+    long max_temp = -1;
+    for (int zone = 0; zone < 48; zone++) {
+        std::ifstream temp_file("/sys/class/thermal/thermal_zone" + std::to_string(zone) + "/temp");
+        long temp = 0;
+        if (temp_file >> temp)
+            max_temp = std::max(max_temp, temp);
+    }
+    const uint64_t calls = session_diag::total_calls();
+    const double seconds = std::max(0.001, std::chrono::duration<double>(now - last_time).count());
+    LOG_INFO("[TICK] t=+{}s rss={}MB threads={} load={} mem_avail={}MB max_temp={}C hle_calls={} ({}/s) hle_errors={}",
+        std::chrono::duration_cast<std::chrono::seconds>(now - start).count(), rss_kb / 1024, threads, load, avail_kb / 1024,
+        max_temp < 0 ? -1.0 : (max_temp > 1000 ? max_temp / 1000.0 : static_cast<double>(max_temp)), calls,
+        static_cast<uint64_t>((calls - last_calls) / seconds), session_diag::total_errors());
+    last_calls = calls;
+    last_time = now;
+#else
+    (void)last_calls;
+    (void)last_time;
+    (void)start;
+#endif
+}
+
+static void stop_sampler() {
+    {
+        const std::lock_guard<std::mutex> lock(s_sampler_mutex);
+        s_sampler_stop = true;
+    }
+    s_sampler_cv.notify_all();
+    if (s_sampler_thread.joinable())
+        s_sampler_thread.join();
+}
+
+static void start_sampler() {
+    stop_sampler();
+    s_sampler_stop = false;
+    s_sampler_thread = std::thread([]() {
+        const auto start = std::chrono::steady_clock::now();
+        auto last_time = start;
+        uint64_t last_calls = session_diag::total_calls();
+        std::unique_lock<std::mutex> lock(s_sampler_mutex);
+        while (!s_sampler_cv.wait_for(lock, std::chrono::seconds(5), []() { return s_sampler_stop; })) {
+            lock.unlock();
+            log_tick(last_calls, last_time, start);
+            lock.lock();
+        }
+    });
+}
+
+// --- "did the previous app session end cleanly?" ---------------------------------------------------------
+// running.marker exists while an app session is active. If it is still there at the next start the app was
+// killed, froze for good or crashed; crash and freeze handlers add a line saying which.
+static fs::path marker_path() {
+    return s_log_file_path.parent_path() / "sessions" / "running.marker";
+}
+
+static void write_marker(const std::string &text) {
+    std::ofstream out(marker_path(), std::ios::trunc);
+    out << text << "\n";
+}
+
+static void check_previous_marker() {
+    boost::system::error_code ec;
+    if (!fs::exists(marker_path(), ec))
+        return;
+    std::ifstream in(marker_path());
+    std::string text, line;
+    while (std::getline(in, line))
+        text += (text.empty() ? "" : " | ") + line;
+    LOG_WARN("[SESSION] THE PREVIOUS APP SESSION DID NOT END CLEANLY: {} - the app was killed (OOM, force stop), froze for good or crashed; its log is in the sessions folder", text);
+    fs::remove(marker_path(), ec);
+}
+
+void note_session_event(const char *what) {
+    // no lock: this is also called from the crash handler
+    {
+        std::ofstream out(marker_path(), std::ios::app);
+        out << "event: " << what << "\n";
+    }
+    LOG_CRITICAL("[SESSION] event: {}", what);
+}
+
+void report_crash_extras(int signal_number) {
+    note_session_event(fmt::format("CRASH, signal {}", signal_number).c_str());
+    if (s_crash_context_provider)
+        LOG_CRITICAL("[CRASH] guest context: {}", s_crash_context_provider());
+    session_diag::report("crash");
+    flush();
+}
+
+// --- session verbosity -------------------------------------------------------------------------------------
+// The session files can be more detailed than the general log: the logger itself runs at the more verbose of
+// the two levels and every other sink filters on the general level.
+static spdlog::level::level_enum s_user_level = spdlog::level::trace;
+static int s_session_level_override = -1; // -1: follow the general level (but never less than info)
+
+static void apply_levels() {
+    // lines of the session files are at least info, so a high general log level does not empty them
+    spdlog::level::level_enum session_level = std::min(s_user_level, spdlog::level::info);
+    if (s_session_level_override >= 0)
+        session_level = std::min(static_cast<spdlog::level::level_enum>(s_session_level_override), spdlog::level::info);
+    spdlog::set_level(std::min(s_user_level, session_level));
+    for (const auto &sink : sinks) {
+        if (sink == s_session_sink)
+            sink->set_level(session_level);
+#ifdef __ANDROID__
+        else if (sink == s_logcat_sink)
+            continue;
+#endif
+        else
+            sink->set_level(s_user_level);
+    }
+}
+
+static fs::path session_level_path() {
+    return s_log_file_path.parent_path() / "sessions" / "session_level.txt";
+}
+
+void set_session_level(int level) {
+    s_session_level_override = level < 0 ? -1 : std::min(level, static_cast<int>(spdlog::level::off));
+    boost::system::error_code ec;
+    fs::create_directories(session_level_path().parent_path(), ec);
+    std::ofstream out(session_level_path(), std::ios::trunc);
+    out << s_session_level_override << "\n";
+    apply_levels();
+    LOG_INFO("[SESSION] session log detail is now {}", s_session_level_override < 0 ? std::string("same as the log level") : std::to_string(s_session_level_override));
+}
+
+int get_session_level() {
+    return s_session_level_override;
+}
+
+static void load_session_level() {
+    std::ifstream in(session_level_path());
+    int level = -1;
+    if (in >> level)
+        s_session_level_override = level < 0 ? -1 : std::min(level, static_cast<int>(spdlog::level::off));
+}
+
 static void switch_session_file(const fs::path &path, bool append) {
     s_session_sink->request_switch(path, append);
     // the marker is handled by session_file_sink in the logger thread, in order with all other messages
@@ -315,6 +495,11 @@ void begin_session(SessionKind kind, const std::string &label) {
     s_session_start = std::chrono::steady_clock::now();
 
     switch_session_file(path, false);
+    if (kind != SessionKind::Emulator) {
+        session_diag::reset();
+        write_marker(fmt::format("session {} started", name));
+        start_sampler();
+    }
     LOG_INFO("[SESSION] begin {} ({}) label='{}'", name, prefix, label);
     LOG_INFO("[SESSION] FORK BUILD seq {} compiled {} {}", FORK_BUILD_SEQ, __DATE__, __TIME__);
     log_system_snapshot("start");
@@ -329,7 +514,10 @@ void end_session() {
 
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - s_session_start).count();
     LOG_INFO("[SESSION] end {} after {} s", s_session_name, seconds);
+    stop_sampler();
     log_system_snapshot("end");
+    boost::system::error_code marker_ec;
+    fs::remove(marker_path(), marker_ec); // ended cleanly
 
     s_app_session_active = false;
     // back to the emulator session (state after the app), appending to the file of the start of this process
@@ -372,8 +560,11 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
     sinks.push_back(s_session_sink);
     if (add_sink(root_paths.get_log_path() / LOG_FILE_NAME) != Success)
         return InitConfigFailed;
+    load_session_level();
+    apply_levels();
     begin_session(SessionKind::Emulator, "");
     LOG_INFO("================= Vita3K session start =================");
+    check_previous_marker();
     LOG_INFO("FORK BUILD seq {} compiled {} {} | {}", FORK_BUILD_SEQ, __DATE__, __TIME__, RELEASE_VERSION ? "Release Version" : FORK_BUILD_CHANGES);
 
     std::set_terminate([]() {
@@ -437,7 +628,8 @@ void set_crash_context_provider(std::string (*provider)()) {
 }
 
 void set_level(spdlog::level::level_enum log_level) {
-    spdlog::set_level(log_level);
+    s_user_level = log_level;
+    apply_levels();
 #ifdef __ANDROID__
     apply_android_log_policy(log_level);
 #endif

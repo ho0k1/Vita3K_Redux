@@ -103,10 +103,25 @@ struct ThreadState {
     uint32_t import_ring[16] = {};
     uint32_t import_ring_lr[16] = {};
     uint8_t import_ring_pos = 0;
-    void push_import_ring(uint32_t nid, uint32_t lr) {
-        import_ring[import_ring_pos & 15] = nid;
-        import_ring_lr[import_ring_pos & 15] = lr;
+    // arguments (r0-r3) and the result (r0) of the last 16 imports; import_ring_done is false while a call has not returned
+    uint32_t import_ring_arg[16][4] = {};
+    uint32_t import_ring_ret[16] = {};
+    bool import_ring_done[16] = {};
+    void push_import_ring(uint32_t nid, uint32_t lr, const uint32_t *args = nullptr) {
+        const uint8_t slot = import_ring_pos & 15;
+        import_ring[slot] = nid;
+        import_ring_lr[slot] = lr;
+        for (int i = 0; i < 4; i++)
+            import_ring_arg[slot][i] = args ? args[i] : 0;
+        import_ring_ret[slot] = 0;
+        import_ring_done[slot] = false;
         import_ring_pos++;
+    }
+    // slot: import_ring_pos & 15 as it was before the push (nested calls made by callbacks move the position)
+    void set_import_ret(uint8_t slot, uint32_t ret) {
+        slot &= 15;
+        import_ring_ret[slot] = ret;
+        import_ring_done[slot] = true;
     }
     const char *wait_prim_kind = nullptr;
     SceUID wait_prim_uid = 0;

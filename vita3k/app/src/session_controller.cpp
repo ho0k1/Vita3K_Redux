@@ -29,15 +29,54 @@
 #include <motion/state.h>
 #include <overlay/display_manager.h>
 #include <renderer/functions.h>
+#include <nids/functions.h>
 #include <util/log.h>
+#include <util/session_diag.h>
+
+#include <cctype>
+#include <cstring>
 
 // defined in interface.cpp
 uint32_t install_contents(EmuEnvState &emuenv, const fs::path &path);
 
 namespace app {
 
+// "sceNetCtlInetGetInfo" -> "sceNet*": a rough module name for functions without a known library
+static std::string module_from_function_name(const std::string &function) {
+    const size_t start = function.find_first_not_of('_');
+    if (start == std::string::npos || function.compare(start, 3, "sce") != 0)
+        return "?";
+    size_t end = start + 3;
+    if (end < function.size() && std::isupper(static_cast<unsigned char>(function[end])))
+        end++;
+    while (end < function.size() && !std::isupper(static_cast<unsigned char>(function[end])) && !std::isdigit(static_cast<unsigned char>(function[end])))
+        end++;
+    return function.substr(start, end - start) + "*";
+}
+
 AppSessionController::AppSessionController(EmuEnvState &emuenv)
     : emuenv(emuenv) {
+    // call statistics and the last calls of every thread, written at the end of a session, on a freeze and on a crash
+    session_diag::set_report_hook([&emuenv](const char *reason) {
+        std::unique_lock<std::mutex> libs_lock(emuenv.kernel.export_nids_mutex, std::try_to_lock);
+        session_diag::log_summary(reason, [&](uint32_t nid) {
+            session_diag::NidName name;
+            const char *function = import_name(nid);
+            if (std::strcmp(function, "UNRECOGNISED") != 0)
+                name.function = function;
+            if (libs_lock.owns_lock()) {
+                const auto lib = emuenv.kernel.nid_libraries.find(nid);
+                if (lib != emuenv.kernel.nid_libraries.end())
+                    name.module = lib->second;
+            }
+            if (name.module.empty())
+                name.module = module_from_function_name(name.function);
+            return name;
+        });
+        if (libs_lock.owns_lock())
+            libs_lock.unlock();
+        emuenv.kernel.log_recent_calls(reason);
+    });
 }
 
 bool AppSessionController::has_active_session() const {
@@ -195,6 +234,9 @@ void AppSessionController::stop(const AppSessionStopReason reason) {
     }
 
     const bool needs_renderer_cleanup = renderer_was_initialized || active_frame_host.has_value();
+
+    if (runtime_was_initialized)
+        session_diag::report(reason == AppSessionStopReason::LaunchFailure ? "launch-failure" : "session-end");
 
     if (runtime_was_initialized) {
         if (app_started && reason != AppSessionStopReason::LaunchFailure)

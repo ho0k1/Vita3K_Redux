@@ -9,6 +9,7 @@ add_library(
 	src/instrset_detect.cpp
 	src/logging.cpp
 	src/mem_snapshot.cpp
+	src/session_diag.cpp
 	src/net_utils.cpp
 	src/string_utils.cpp
 	src/tracy.cpp

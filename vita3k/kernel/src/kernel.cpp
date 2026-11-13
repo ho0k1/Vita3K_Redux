@@ -378,14 +378,40 @@ static std::string recent_imports(const ThreadState &t) {
     std::string out;
     const uint8_t pos = t.import_ring_pos;
     for (int k = 0; k < 16; k++) {
-        const uint32_t nid = t.import_ring[(pos + k) & 15];
+        const uint8_t slot = (pos + k) & 15;
+        const uint32_t nid = t.import_ring[slot];
         if (!nid)
             continue;
-        const uint32_t lr = t.import_ring_lr[(pos + k) & 15];
+        const uint32_t lr = t.import_ring_lr[slot];
         const char *name = import_name(nid);
-        out += std::strcmp(name, "UNRECOGNISED") ? fmt::format(" {}@{:X}", name, lr) : fmt::format(" 0x{:08X}@{:X}", nid, lr);
+        const std::string label = std::strcmp(name, "UNRECOGNISED") ? std::string(name) : fmt::format("0x{:08X}", nid);
+        // name(r0,r1,r2,r3)=result@return address; "..." instead of a result: the call had not returned
+        out += fmt::format(" {}({:X},{:X},{:X},{:X})={}@{:X}", label, t.import_ring_arg[slot][0], t.import_ring_arg[slot][1],
+            t.import_ring_arg[slot][2], t.import_ring_arg[slot][3],
+            t.import_ring_done[slot] ? fmt::format("{:X}", t.import_ring_ret[slot]) : std::string("..."), lr);
     }
     return out.empty() ? std::string(" none") : out;
+}
+
+// Last HLE calls of every guest thread, for the crash / freeze report. Does not block: skips threads when the kernel is busy.
+void KernelState::log_recent_calls(const char *reason) {
+    std::vector<ThreadStatePtr> snapshot;
+    {
+        std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
+        if (!lock.owns_lock()) {
+            LOG_WARN("[CALLS:{}] the kernel is busy, the thread list could not be read", reason);
+            return;
+        }
+        for (auto &[tid, t] : threads)
+            snapshot.push_back(t);
+    }
+    for (const auto &t : snapshot) {
+        const ThreadStatus status = t->status;
+        const char *status_str = (status == ThreadStatus::run) ? "run" : (status == ThreadStatus::wait) ? "wait"
+            : (status == ThreadStatus::suspend)                                                         ? "suspend"
+                                                                                                        : "dormant";
+        LOG_WARN("[CALLS:{}] thread {} ({}) {} last HLE calls name(r0-r3)=result@return address, oldest first:{}", reason, t->name, t->id, status_str, recent_imports(*t));
+    }
 }
 
 void KernelState::log_thread_hang_dump() {

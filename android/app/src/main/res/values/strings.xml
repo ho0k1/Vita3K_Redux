@@ -781,4 +781,7 @@
     <string name="pkgj_bg_working">Installing / waiting… received %1$s MB</string>
     <string name="pkgj_bg_done">Finished. Received %1$s MB. Tap to open.</string>
     <string name="pkgj_bg_pause">Pause</string>
+    <string name="settings_debug_session_detail">Session log detail</string>
+    <string name="settings_debug_session_detail_same">Same as log level</string>
+    <string name="settings_debug_session_detail_desc">How detailed the per-session files are (emulator, app, PKGj). They always contain at least Info. Trace and Debug make them much larger and slow the emulation down, use them only to find a problem.</string>
 </resources>

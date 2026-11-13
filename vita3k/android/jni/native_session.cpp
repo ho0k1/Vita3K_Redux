@@ -12,6 +12,7 @@
 #include <ime/keyboard.h>
 #include <io/state.h>
 #include <util/background_activity.h>
+#include <util/log.h>
 #include <motion/functions.h>
 
 #include <SDL3/SDL_events.h>
@@ -94,6 +95,16 @@ Java_org_vita3k_emulator_NativeLib_isBackgroundWorkActive(JNIEnv *, jclass) {
     if (emuenv->io.title_id != "PKGJ00000")
         return JNI_FALSE;
     return background_activity::is_active(20000) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_org_vita3k_emulator_NativeLib_setSessionLogLevel(JNIEnv *, jclass, jint level) {
+    logging::set_session_level(static_cast<int>(level));
+}
+
+JNIEXPORT jint JNICALL
+Java_org_vita3k_emulator_NativeLib_getSessionLogLevel(JNIEnv *, jclass) {
+    return static_cast<jint>(logging::get_session_level());
 }
 
 // total bytes received by the guest from the network since the process started

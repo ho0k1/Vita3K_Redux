@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <util/session_diag.h>
 #include <algorithm>
 #include <cpu/functions.h>
 #include <cstring>
@@ -336,6 +337,9 @@ static void vblank_sync_thread(EmuEnvState &emuenv) {
                     stall_vblanks, never_flipped ? " (game NEVER flipped since boot)" : "", renderer_idle_vblanks, guest_idle_vblanks,
                     emuenv.display.setframe_call_count.load(), emuenv.display.setframe_accept_count.load());
                 emuenv.kernel.log_thread_hang_dump();
+                // call statistics and last calls of every thread; if the app never recovers the next start says it froze
+                logging::note_session_event(fmt::format("FREEZE: no framebuffer flip for {} vblanks (HANG WATCHDOG)", stall_vblanks).c_str());
+                session_diag::report("freeze");
                 renderer_heartbeat();
                 LOG_ERROR("HANG DISPLAY QUEUE: depth={} worker_state={} (0=idle-waiting-entry 1=wait-old-sync 2=wait-new-sync 3=running-callback) entries_done={}",
                     emuenv.gxm.display_queue.size(), emuenv.gxm.display_worker_state.load(), emuenv.gxm.display_entries_done.load());

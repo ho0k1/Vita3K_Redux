@@ -1464,6 +1464,8 @@ private fun LogExportSection(onShowHelp: (SettingsHelpEntry) -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    // session log detail: -1 same as the log level, otherwise a spdlog level (0 trace, 1 debug, 2 info)
+    var sessionLevel by remember { mutableStateOf(runCatching { NativeLib.getSessionLogLevel() }.getOrDefault(-1)) }
     val savedTemplate = stringResource(R.string.settings_debug_logs_saved)
     val failedTemplate = stringResource(R.string.settings_debug_logs_failed)
 
@@ -1473,6 +1475,27 @@ private fun LogExportSection(onShowHelp: (SettingsHelpEntry) -> Unit) {
         help = null,
         onShowHelp = onShowHelp
     ) {
+        val sessionDetailTitle = stringResource(R.string.settings_debug_session_detail)
+        SettingsChoiceField(
+            title = sessionDetailTitle,
+            options = listOf(
+                stringResource(R.string.settings_debug_session_detail_same),
+                stringResource(R.string.settings_opt_trace),
+                stringResource(R.string.settings_opt_debug),
+                stringResource(R.string.settings_opt_info)
+            ),
+            selectedIndex = (sessionLevel + 1).coerceIn(0, 3),
+            onSelect = { index ->
+                sessionLevel = index - 1
+                runCatching { NativeLib.setSessionLogLevel(index - 1) }
+            },
+            help = helpEntry(
+                sessionDetailTitle,
+                stringResource(R.string.settings_debug_session_detail_desc),
+                SettingsScope.Global
+            ),
+            onShowHelp = onShowHelp
+        )
         FilledTonalButton(
             enabled = !busy,
             onClick = {

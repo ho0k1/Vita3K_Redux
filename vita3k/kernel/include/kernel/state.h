@@ -201,6 +201,7 @@ struct KernelState {
     void resume_world();
 
     void log_thread_hang_dump();
+    void log_recent_calls(const char *reason);
     void log_eventflag_history();
     void log_condvar_history();
     int try_break_provable_evf_cycle(bool dry_run = false);

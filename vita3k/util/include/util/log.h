@@ -80,6 +80,13 @@ void begin_session(SessionKind kind, const std::string &label);
 void end_session();
 // writes memory, thread count, load and temperatures to the log
 void log_system_snapshot(const char *when);
+// remembers an event (crash, freeze) of the running session; shown at the next start if the session did not end cleanly
+void note_session_event(const char *what);
+// called by the fatal signal handler: guest context, call statistics, marker, flush
+void report_crash_extras(int signal_number);
+// session files can be more detailed than the general log: -1 = same as the log level, else a spdlog level (0 trace .. 6 off)
+void set_session_level(int level);
+int get_session_level();
 
 } // namespace logging
 

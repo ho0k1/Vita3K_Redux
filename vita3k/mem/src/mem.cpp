@@ -1584,6 +1584,8 @@ static void signal_handler(int sig, siginfo_t *info, void *uct) noexcept {
             LOG_CRITICAL("[CRASH] frame #{:02}: {}", i, describe(bt.pcs[i]));
     }
 #endif
+    // guest thread, call statistics, last calls of all guest threads, marker for the next start
+    logging::report_crash_extras(sig);
     logging::flush();
     signal(sig, SIG_DFL);
     raise(sig);

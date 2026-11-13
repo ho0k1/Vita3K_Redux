@@ -36,6 +36,7 @@
 #include <util/find.h>
 #include <util/lock_and_find.h>
 #include <util/log.h>
+#include <util/session_diag.h>
 #include <util/string_utils.h>
 
 #include <unordered_set>
@@ -166,6 +167,10 @@ void call_import(EmuEnvState &emuenv, CPUState &cpu, uint32_t nid, SceUID thread
     const ImportFn *fn = resolve_import(nid);
     if (fn) {
         (*fn)(emuenv, cpu, thread_id);
+        const uint32_t result = read_reg(cpu, 0);
+        if (session_diag::note_call(nid, result))
+            LOG_WARN("[HLE-ERROR] {} returned 0x{:08X} (thread {}, LR {}) - first error of this function in this session",
+                import_name(nid), result, thread_id, log_hex(read_lr(cpu)));
     } else {
         const ThreadStatePtr thread = emuenv.kernel.get_thread(thread_id);
         // make the function return 0
