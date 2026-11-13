@@ -370,7 +370,17 @@ EXPORT(SceInt32, sceNgsRackRelease, ngs::Rack *rack, Ptr<void> callback) {
         return RET_ERROR(SCE_NGS_ERROR_INVALID_ARG);
 
     std::unique_lock<std::recursive_mutex> lock(rack->system->voice_scheduler.mutex);
-    if (!rack->system->voice_scheduler.is_updating && !callback) {
+    if (rack->system->voice_scheduler.is_updating && !callback && rack->system->voice_scheduler.updating_thread == std::this_thread::get_id()) {
+        // called from a callback running inside sceNgsSystemUpdate: waiting for the update to end would wait for ourselves
+        // forever (this froze games), so the rack is released at the end of this update instead
+        ngs::OperationPending op;
+        op.type = ngs::PendingType::ReleaseRack;
+        op.system = rack->system;
+        op.release_data.state = &emuenv.ngs;
+        op.release_data.rack = rack;
+        op.release_data.callback = 0;
+        rack->system->voice_scheduler.operations_pending.push(op);
+    } else if (!rack->system->voice_scheduler.is_updating && !callback) {
         ngs::release_rack(emuenv.ngs, emuenv.mem, rack->system, rack);
     } else if (!callback) {
         // wait for the update to finish
@@ -442,6 +452,10 @@ EXPORT(SceInt32, sceNgsSystemRelease, ngs::System *system) {
 
     {
         std::unique_lock<std::recursive_mutex> lock(system->voice_scheduler.mutex);
+        if (system->voice_scheduler.is_updating && system->voice_scheduler.updating_thread == std::this_thread::get_id()) {
+            LOG_WARN_ONCE("sceNgsSystemRelease called from inside a ngs update callback, the system is not released to avoid a deadlock");
+            return SCE_NGS_OK;
+        }
         if (system->voice_scheduler.is_updating) {
             LOG_WARN_ONCE("sceNgsSystemRelease called during a ngs update, contact devs if your game softlocks now.");
 

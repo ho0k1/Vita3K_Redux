@@ -154,6 +154,7 @@ void VoiceScheduler::cancel_finished_callback(Voice *voice) {
 void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID thread_id) {
     std::unique_lock<std::recursive_mutex> scheduler_lock(mutex);
     is_updating = true;
+    updating_thread = std::this_thread::get_id();
 
     {
         constexpr bool NGS_CENSUS_VERBOSE = false;
@@ -300,9 +301,11 @@ void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID threa
         case PendingType::ReleaseRack: {
             const SceNgsCallbackInfo info = op.release_data.rack->release_callback_info(mem);
             release_rack(*op.release_data.state, mem, op.system, op.release_data.rack);
-            scheduler_lock.unlock();
-            ngs::invoke_callback(kern, mem, thread_id, Ptr<void>(op.release_data.callback), info);
-            scheduler_lock.lock();
+            if (op.release_data.callback) {
+                scheduler_lock.unlock();
+                ngs::invoke_callback(kern, mem, thread_id, Ptr<void>(op.release_data.callback), info);
+                scheduler_lock.lock();
+            }
             break;
         }
         case PendingType::VoiceFinished: {
@@ -323,6 +326,7 @@ void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID threa
         }
     }
 
+    updating_thread = std::thread::id();
     is_updating = false;
     condvar.notify_all();
 }

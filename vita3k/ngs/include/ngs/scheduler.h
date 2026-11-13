@@ -23,6 +23,7 @@
 
 #include <condition_variable>
 #include <queue>
+#include <thread>
 #include <vector>
 
 struct MemState;
@@ -69,6 +70,8 @@ struct VoiceScheduler {
     std::recursive_mutex mutex;
     std::condition_variable_any condvar;
     bool is_updating = false;
+    // host thread running update(); a guest callback called from there must never wait for the update to end
+    std::thread::id updating_thread;
 
 protected:
     void deque_insert(const MemState &mem, Voice *voice);
