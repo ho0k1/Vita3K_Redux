@@ -19,8 +19,52 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 namespace {
+
+// PKGj writes ux0:pkgj/status.txt (state, name, progress, error). Returns its text plus an "age=<sec>" line.
+std::string read_pkgj_status() {
+    auto *emuenv = get_emuenv();
+    if (!emuenv)
+        return {};
+    std::error_code ec;
+    const auto path = emuenv->vita_fs_path / "ux0" / "pkgj" / "status.txt";
+    const auto mtime = std::filesystem::last_write_time(path, ec);
+    if (ec)
+        return {};
+    const auto age = std::chrono::duration_cast<std::chrono::seconds>(std::filesystem::file_time_type::clock::now() - mtime).count();
+    std::ifstream in(path);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    ss << "age=" << std::max<long long>(0, age) << "\n";
+    return ss.str();
+}
+
+// downloading / retrying must keep reporting; install phases may be silent for a long time
+bool pkgj_reports_busy() {
+    const auto text = read_pkgj_status();
+    if (text.empty())
+        return false;
+    const auto value = [&](const char *key) -> std::string {
+        const std::string prefix = std::string(key) + "=";
+        std::istringstream lines(text);
+        for (std::string line; std::getline(lines, line);)
+            if (line.rfind(prefix, 0) == 0)
+                return line.substr(prefix.size());
+        return {};
+    };
+    const auto state = value("state");
+    const long long age = std::atoll(value("age").c_str());
+    if (state == "downloading" || state == "retrying")
+        return age < 120;
+    if (state == "installing")
+        return age < 1800;
+    return false;
+}
 
 app::AppSessionPauseReason to_pause_reason(const jint reason_mask) {
     switch (static_cast<uint32_t>(reason_mask)) {
@@ -94,7 +138,7 @@ Java_org_vita3k_emulator_NativeLib_isBackgroundWorkActive(JNIEnv *, jclass) {
         return JNI_FALSE;
     if (emuenv->io.title_id != "PKGJ00000")
         return JNI_FALSE;
-    return background_activity::is_active(20000) ? JNI_TRUE : JNI_FALSE;
+    return (background_activity::is_active(20000) || pkgj_reports_busy()) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -105,6 +149,11 @@ Java_org_vita3k_emulator_NativeLib_setSessionLogLevel(JNIEnv *, jclass, jint lev
 JNIEXPORT jint JNICALL
 Java_org_vita3k_emulator_NativeLib_getSessionLogLevel(JNIEnv *, jclass) {
     return static_cast<jint>(logging::get_session_level());
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_vita3k_emulator_NativeLib_getPkgjStatus(JNIEnv *env, jclass) {
+    return env->NewStringUTF(read_pkgj_status().c_str());
 }
 
 // total bytes received by the guest from the network since the process started

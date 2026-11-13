@@ -1,0 +1,748 @@
+diff --git a/src/downloader.cpp b/src/downloader.cpp
+index ee8e396..0a0d752 100644
+--- a/src/downloader.cpp
++++ b/src/downloader.cpp
+@@ -10,6 +10,155 @@
+ 
+ #include <boost/scope_exit.hpp>
+ 
++#include <algorithm>
++#include <cstdlib>
++
++namespace
++{
++constexpr int MAX_RETRIES = 5;
++constexpr const char* QUEUE_FILE = "ux0:pkgj/queue.txt";
++constexpr const char* STATUS_FILE = "ux0:pkgj/status.txt";
++
++struct ErrorInfo
++{
++    // "network", "server", "disk", "integrity", "install", "other"
++    const char* kind;
++    bool retryable;
++    std::string text;
++};
++
++bool has(const std::string& s, const char* part)
++{
++    return s.find(part) != std::string::npos;
++}
++
++ErrorInfo classify_error(const std::string& raw)
++{
++    if (has(raw, "bad http status"))
++    {
++        const bool transient = has(raw, ": 5") || has(raw, ": 429") ||
++                               has(raw, ": 408");
++        if (has(raw, ": 404") || has(raw, ": 410"))
++            return {"server", false, "File not found on the server (HTTP 404/410), the link is dead"};
++        if (has(raw, ": 403") || has(raw, ": 401"))
++            return {"server", false, "Server refused access (HTTP 401/403)"};
++        return {"server",
++                transient,
++                transient ? "Server is busy or broken (" + raw + ")"
++                          : "Server error (" + raw + ")"};
++    }
++    if (has(raw, "failed to write") || has(raw, "cannot create file") ||
++        has(raw, "sceIoWrite") || has(raw, "sceIoOpen") ||
++        has(raw, "sceIoMkdir") || has(raw, "failed sceIo"))
++        return {"disk", false, "Disk error: no free space or no write access"};
++    if (has(raw, "integrity") || has(raw, "wrong pkg header") ||
++        has(raw, "zRIF content id") || has(raw, "corrupted") ||
++        has(raw, "invalid key type"))
++        return {"integrity", false, "The downloaded package is damaged or does not match"};
++    if (has(raw, "can't resume") || has(raw, "Resume data deleted"))
++        return {"network", true, "Saved progress was invalid, starting again"};
++    if (has(raw, "Host not found"))
++        return {"network", true, "Network error: host not found (no internet?)"};
++    if (has(raw, "Network timeout") || has(raw, "0x80431068"))
++        return {"network", true, "Network error: timeout"};
++    if (has(raw, "SSL"))
++        return {"network", true, "Network error: SSL / secure connection failed"};
++    if (has(raw, "HTTP") || has(raw, "Network") || has(raw, "0x8043") ||
++        has(raw, "0x8041") || has(raw, "0x80436"))
++        return {"network", true, "Network error: connection lost"};
++    if (has(raw, "install") || has(raw, "promot"))
++        return {"install", false, "Install failed: " + raw};
++    return {"other", false, raw};
++}
++
++std::string one_line(std::string s)
++{
++    for (auto& c : s)
++        if (c == '\n' || c == '\r' || c == '\t')
++            c = ' ';
++    return s;
++}
++
++std::string to_hex(const std::vector<uint8_t>& v)
++{
++    static const char* digits = "0123456789abcdef";
++    std::string out;
++    for (auto b : v)
++    {
++        out += digits[b >> 4];
++        out += digits[b & 15];
++    }
++    return out;
++}
++
++std::vector<uint8_t> from_hex(const std::string& s)
++{
++    std::vector<uint8_t> out;
++    auto val = [](char c) -> int
++    {
++        if (c >= '0' && c <= '9')
++            return c - '0';
++        if (c >= 'a' && c <= 'f')
++            return c - 'a' + 10;
++        return -1;
++    };
++    for (size_t i = 0; i + 1 < s.size(); i += 2)
++    {
++        const int a = val(s[i]), b = val(s[i + 1]);
++        if (a < 0 || b < 0)
++            break;
++        out.push_back(static_cast<uint8_t>(a * 16 + b));
++    }
++    return out;
++}
++
++std::vector<std::string> split_tabs(const std::string& line)
++{
++    std::vector<std::string> parts;
++    size_t start = 0;
++    for (;;)
++    {
++        const auto pos = line.find('\t', start);
++        if (pos == std::string::npos)
++        {
++            parts.push_back(line.substr(start));
++            break;
++        }
++        parts.push_back(line.substr(start, pos - start));
++        start = pos + 1;
++    }
++    return parts;
++}
++
++// removes empty folders below path (and path itself); returns true if path is gone
++bool prune_empty(const std::string& path)
++{
++    try
++    {
++        if (pkgi_get_inode_type(path) != InodeType::Directory)
++            return false;
++        bool empty = true;
++        for (const auto& name : pkgi_list_dir_contents(path))
++        {
++            const auto child = path + "/" + name;
++            if (pkgi_get_inode_type(child) == InodeType::Directory &&
++                prune_empty(child))
++                continue;
++            empty = false;
++        }
++        if (!empty)
++            return false;
++        pkgi_delete_dir(path);
++        return true;
++    }
++    catch (const std::exception& e)
++    {
++        LOG("prune_empty(%s) failed: %s", path.c_str(), e.what());
++        return false;
++    }
++}
++}
++
+ std::string type_to_string(Type type)
+ {
+     switch (type)
+@@ -56,7 +205,15 @@ void Downloader::add(const DownloadItem& d)
+     LOG("Queued download: %s", d.name.c_str());
+     {
+         ScopeLock _(_cond.get_mutex());
++        _parked.erase(
++                std::remove_if(
++                        _parked.begin(),
++                        _parked.end(),
++                        [&](auto const& p)
++                        { return p.type == d.type && p.content == d.content; }),
++                _parked.end());
+         _queue.push_back(d);
++        save_queue_locked();
+     }
+     _cond.notify_one();
+ }
+@@ -106,15 +263,218 @@ void Downloader::remove_from_queue(Type type, const std::string& contentid)
+         contentid == _current_download.content)
+         _cancel_current = true;
+     else
++    {
++        const auto same = [&](auto const& item)
++        { return item.type == type && item.content == contentid; };
+         _queue.erase(
+-                std::remove_if(
+-                        _queue.begin(),
+-                        _queue.end(),
+-                        [&](auto const& item) {
+-                            return item.type == type &&
+-                                   item.content == contentid;
+-                        }),
++                std::remove_if(_queue.begin(), _queue.end(), same),
+                 _queue.end());
++        _parked.erase(
++                std::remove_if(_parked.begin(), _parked.end(), same),
++                _parked.end());
++        save_queue_locked();
++    }
++}
++
++std::string Downloader::get_status()
++{
++    ScopeLock _(_cond.get_mutex());
++    return _status;
++}
++
++bool Downloader::retry(Type type, const std::string& contentid)
++{
++    std::optional<DownloadItem> found;
++    {
++        ScopeLock _(_cond.get_mutex());
++        for (auto it = _history.begin(); it != _history.end(); ++it)
++            if (it->type == type && it->content == contentid && it->retry)
++            {
++                found = it->retry;
++                _history.erase(it);
++                break;
++            }
++    }
++    if (!found)
++        return false;
++    add(*found);
++    return true;
++}
++
++// the queue file holds the running download, the queued ones and the ones that failed because
++// of the network, so they continue after PKGj / the emulator is restarted
++void Downloader::save_queue_locked()
++{
++    std::string out;
++    const auto line = [&](const DownloadItem& d)
++    {
++        out += fmt::format(
++                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
++                static_cast<int>(d.type),
++                one_line(d.name),
++                one_line(d.content),
++                one_line(d.url),
++                to_hex(d.rif),
++                to_hex(d.digest),
++                d.save_as_iso ? 1 : 0,
++                one_line(d.partition),
++                one_line(d.version));
++    };
++    if (!_current_download.content.empty())
++        line(_current_download);
++    for (const auto& d : _queue)
++        line(d);
++    for (const auto& d : _parked)
++        line(d);
++    try
++    {
++        if (out.empty())
++            pkgi_rm(QUEUE_FILE);
++        else
++        {
++            pkgi_mkdirs("ux0:pkgj");
++            pkgi_save(QUEUE_FILE, out.data(), static_cast<uint32_t>(out.size()));
++        }
++    }
++    catch (const std::exception& e)
++    {
++        LOG("Cannot save the download queue: %s", e.what());
++    }
++}
++
++void Downloader::resume_saved()
++{
++    std::vector<DownloadItem> restored;
++    try
++    {
++        if (pkgi_file_exists(QUEUE_FILE))
++        {
++            const auto data = pkgi_load(QUEUE_FILE);
++            std::string text(data.begin(), data.end());
++            size_t start = 0;
++            while (start < text.size())
++            {
++                auto end = text.find('\n', start);
++                if (end == std::string::npos)
++                    end = text.size();
++                const auto parts = split_tabs(text.substr(start, end - start));
++                start = end + 1;
++                if (parts.size() < 9 || parts[2].empty() || parts[3].empty())
++                    continue;
++                DownloadItem d;
++                d.type = static_cast<Type>(std::atoi(parts[0].c_str()));
++                d.name = parts[1];
++                d.content = parts[2];
++                d.url = parts[3];
++                d.rif = from_hex(parts[4]);
++                d.digest = from_hex(parts[5]);
++                d.save_as_iso = parts[6] == "1";
++                d.partition = parts[7];
++                d.version = parts[8];
++                restored.push_back(std::move(d));
++            }
++        }
++
++        // folders of finished / canceled downloads that stayed empty
++        std::vector<std::string> keep;
++        for (const auto& d : restored)
++            keep.push_back(d.content);
++        pkgi_mkdirs("ux0:pkgj");
++        for (const auto& name : pkgi_list_dir_contents("ux0:pkgj"))
++            if (std::find(keep.begin(), keep.end(), name) == keep.end())
++                prune_empty("ux0:pkgj/" + name);
++    }
++    catch (const std::exception& e)
++    {
++        LOG("Cannot restore the download queue: %s", e.what());
++    }
++
++    {
++        ScopeLock _(_cond.get_mutex());
++        for (auto& d : restored)
++            _queue.push_back(std::move(d));
++        _ready = true;
++        LOG("Restored %d saved downloads", static_cast<int>(_queue.size()));
++    }
++    write_status("idle");
++    _cond.notify_one();
++}
++
++// status file for the Android service: state, name, progress, queue length, error text
++void Downloader::write_status(
++        const char* state, const std::string& msg, const char* kind)
++{
++    DownloadItem cur;
++    size_t queued;
++    {
++        ScopeLock _(_cond.get_mutex());
++        cur = _current_download;
++        queued = _queue.size();
++    }
++    const uint64_t offset = _download_offset.load();
++    const uint64_t total = _download_size.load();
++    const auto text = fmt::format(
++            "v=1\nstate={}\nname={}\ntype={}\npercent={}\ndone={}\n"
++            "total={}\nqueue={}\nattempt={}\nmax={}\nkind={}\nmsg={}\n",
++            state,
++            one_line(cur.name),
++            cur.content.empty() ? "" : type_to_string(cur.type),
++            total ? static_cast<int>(offset * 100 / total) : 0,
++            offset,
++            total,
++            queued,
++            _attempt.load(),
++            MAX_RETRIES,
++            kind,
++            one_line(msg));
++    try
++    {
++        pkgi_save(STATUS_FILE, text.data(), static_cast<uint32_t>(text.size()));
++    }
++    catch (const std::exception&)
++    {
++    }
++}
++
++void Downloader::maybe_write_status()
++{
++    const uint32_t now = pkgi_time_msec();
++    if (now - _last_status_ms.load() < 2000)
++        return;
++    _last_status_ms = now;
++    write_status("downloading");
++}
++
++bool Downloader::wait_retry(
++        const DownloadItem&,
++        int attempt,
++        uint32_t delay_sec,
++        const std::string& text)
++{
++    _attempt = attempt;
++    const auto status = fmt::format(
++            "Retry {}/{} in {}s: {}", attempt, MAX_RETRIES, delay_sec, text);
++    {
++        ScopeLock _(_cond.get_mutex());
++        _status = status;
++    }
++    LOG("%s", status.c_str());
++    write_status("retrying", text, "network");
++    uint32_t waited = 0;
++    while (waited < delay_sec * 1000)
++    {
++        if (_cancel_current || _dying)
++            return false;
++        pkgi_sleep(250);
++        waited += 250;
++        if (waited % 2000 == 0)
++            write_status("retrying", text, "network");
++    }
++    {
++        ScopeLock _(_cond.get_mutex());
++        _status.clear();
++    }
++    return true;
+ }
+ 
+ void Downloader::run()
+@@ -129,44 +489,108 @@ void Downloader::run()
+             _cancel_current = false;
+             _download_offset = 0;
+             _download_size = 0;
++            _status.clear();
++            _attempt = 0;
+ 
+             if (_dying)
+                 return;
+-            else if (!_queue.empty())
++            else if (_ready && !_queue.empty())
+             {
+                 item = _current_download = _queue.front();
+                 _queue.pop_front();
+             }
+             else
+                 _cond.wait();
++            save_queue_locked();
+         }
+ 
+         std::string failure;
+-        try
++        bool park = false;
++        const char* kind = "";
++        if (!item.content.empty())
+         {
+-            if (!item.content.empty())
+-                do_download(item);
++            int attempt = 0;
++            uint64_t last_fail_offset = 0;
++            for (;;)
++            {
++                try
++                {
++                    do_download(item);
++                    break;
++                }
++                catch (const std::exception& e)
++                {
++                    const std::string raw = e.what();
++                    if (_cancel_current || _dying)
++                        break;
++                    const auto info = classify_error(raw);
++                    LOG_ERR("Download failed (attempt %d): %s",
++                            attempt + 1,
++                            raw.c_str());
++                    // progress since the last failure means the link works, count from scratch
++                    const uint64_t offset = _download_offset.load();
++                    if (offset > last_fail_offset + 1024 * 1024)
++                        attempt = 0;
++                    last_fail_offset = offset;
++                    if (info.retryable && attempt < MAX_RETRIES)
++                    {
++                        ++attempt;
++                        const uint32_t delay =
++                                std::min<uint32_t>(60, 3u << (attempt - 1));
++                        if (!wait_retry(item, attempt, delay, info.text))
++                            break;
++                        continue;
++                    }
++                    failure = info.text;
++                    park = info.retryable;
++                    kind = info.kind;
++                    break;
++                }
++            }
+         }
+-        catch (const std::exception& e)
++
++        if (!failure.empty())
+         {
+-            LOG_ERR("Download failed: %s", e.what());
+-            failure = e.what();
+-            error(e.what());
++            LOG_ERR("Download failed for good: %s", failure.c_str());
++            write_status("error", failure, kind);
++            error(failure);
+         }
+ 
+         if (!item.content.empty())
+         {
++            // folder of an unfinished download that has no data yet
++            prune_empty(fmt::format("{}pkgj/{}", item.partition, item.content));
++
+             ScopeLock _(_cond.get_mutex());
+-            _history.push_back(
+-                    {item.type,
+-                     item.name,
+-                     item.content,
+-                     !failure.empty() ? "Failed: " + failure
+-                                      : (_cancel_current ? "Canceled"
+-                                                         : "Installed")});
+-            while (_history.size() > 20)
+-                _history.pop_front();
++            if (_dying)
++            {
++                // closing PKGj: keep the download for the next start
++                _parked.push_back(item);
++            }
++            else
++            {
++                DownloadHistoryEntry entry{
++                        item.type,
++                        item.name,
++                        item.content,
++                        !failure.empty()
++                                ? "Failed: " + failure +
++                                          (park ? " (X = try again)" : "")
++                                : (_cancel_current ? "Canceled" : "Installed"),
++                        std::nullopt};
++                if (park)
++                {
++                    entry.retry = item;
++                    _parked.push_back(item);
++                }
++                _history.push_back(std::move(entry));
++                while (_history.size() > 20)
++                    _history.pop_front();
++            }
++            save_queue_locked();
+         }
++        if (failure.empty() && !_dying)
++            write_status("idle", item.content.empty() ? "" : "done");
+     }
+ }
+ 
+@@ -186,6 +610,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+     {
+         _download_offset = download_offset;
+         _download_size = download_size;
++        maybe_write_status();
+     };
+     download->update_status = [](auto&&) {};
+     download->is_canceled = [this] { return _cancel_current || _dying; };
+@@ -197,6 +622,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+                 item.digest.empty() ? nullptr : item.digest.data()))
+         return;
+     LOG("[%s] Download complete: %s", type_to_string(item.type).c_str(), item.name.c_str());
++    write_status("installing");
+     switch (item.type)
+     {
+     case Game:
+@@ -250,12 +676,14 @@ void Downloader::do_download_comppack(const DownloadItem& item)
+     {
+         _download_offset = download_offset;
+         _download_size = download_size;
++        maybe_write_status();
+     };
+     download->is_canceled = [this] { return _cancel_current || _dying; };
+ 
+     download->download(
+             item.partition.c_str(), item.content.c_str(), item.url.c_str());
+     LOGF("Comppack download complete: {}", item.url);
++    write_status("installing");
+     pkgi_install_comppack(
+             item.content, item.type == CompPackPatch, item.version);
+     pkgi_rm(fmt::format("{}pkgj/{}-comp.ppk", item.partition, item.content)
+diff --git a/src/downloader.hpp b/src/downloader.hpp
+index b81f0fc..922e56e 100644
+--- a/src/downloader.hpp
++++ b/src/downloader.hpp
+@@ -4,6 +4,7 @@
+ #include <deque>
+ #include <mutex>
+ #include <optional>
++#include <string>
+ #include <tuple>
+ #include <vector>
+ 
+@@ -43,6 +44,8 @@ struct DownloadHistoryEntry
+     std::string content;
+     // "Installed", "Canceled" or "Failed: <reason>"
+     std::string status;
++    // set when the failure can be fixed by trying again (network problems)
++    std::optional<DownloadItem> retry;
+ };
+ 
+ std::string type_to_string(Type type);
+@@ -65,6 +68,12 @@ public:
+     std::vector<DownloadItem> get_queue();
+     std::vector<DownloadHistoryEntry> get_history();
+     std::tuple<uint64_t, uint64_t> get_current_download_progress();
++    // short text for the UI: "Retry 2/5 in 6s: Network error" (empty when all is fine)
++    std::string get_status();
++    // puts a failed (parked) download from the history back to the queue
++    bool retry(Type type, const std::string& contentid);
++    // call once after refresh/error are set: restores the saved queue and cleans empty folders
++    void resume_saved();
+ 
+     std::function<void(const std::string& content)> refresh;
+     std::function<void(const std::string& error)> error;
+@@ -81,9 +90,27 @@ private:
+     std::atomic<uint64_t> _download_offset = 0;
+     std::atomic<uint64_t> _download_size = 0;
+ 
++    std::vector<DownloadItem> _parked;
++    std::string _status;
++    std::atomic<int> _attempt{0};
++    std::atomic<uint32_t> _last_status_ms{0};
++    bool _ready = false;
++
+     Thread _thread;
+     bool _dying = false;
+ 
++    void save_queue_locked();
++    void write_status(
++            const char* state,
++            const std::string& msg = std::string(),
++            const char* kind = "");
++    void maybe_write_status();
++    bool wait_retry(
++            const DownloadItem& item,
++            int attempt,
++            uint32_t delay_sec,
++            const std::string& text);
++
+     void run();
+     void do_download(const DownloadItem& item);
+ 
+diff --git a/src/downloadsview.cpp b/src/downloadsview.cpp
+index 24b708a..026946c 100644
+--- a/src/downloadsview.cpp
++++ b/src/downloadsview.cpp
+@@ -34,6 +34,7 @@ struct Row
+     std::string text;
+     ImVec4 color;
+     bool cancelable;
++    bool retryable;
+     Type type;
+     std::string content;
+ };
+@@ -56,6 +57,7 @@ void DownloadsView::render(const pkgi_input& input)
+         uint64_t size;
+         std::tie(offset, size) = _downloader.get_current_download_progress();
+         std::string progress = "starting...";
++        const auto status = _downloader.get_status();
+         if (size > 0)
+             progress = fmt::format(
+                     "{}%  {} / {}",
+@@ -67,9 +69,10 @@ void DownloadsView::render(const pkgi_input& input)
+                          "[Downloading] {} ({})  {}",
+                          current->name,
+                          type_to_string(current->type),
+-                         progress),
+-                 green,
++                         status.empty() ? progress : status),
++                 status.empty() ? green : yellow,
+                  true,
++                 false,
+                  current->type,
+                  current->content});
+     }
+@@ -82,6 +85,7 @@ void DownloadsView::render(const pkgi_input& input)
+                          type_to_string(item.type)),
+                  yellow,
+                  true,
++                 false,
+                  item.type,
+                  item.content});
+ 
+@@ -98,6 +102,7 @@ void DownloadsView::render(const pkgi_input& input)
+                          type_to_string(it->type)),
+                  ok ? white : (failed ? red : dim),
+                  false,
++                 it->retry.has_value(),
+                  it->type,
+                  it->content});
+     }
+@@ -123,6 +128,10 @@ void DownloadsView::render(const pkgi_input& input)
+         rows[_selected].cancelable)
+         _downloader.remove_from_queue(
+                 rows[_selected].type, rows[_selected].content);
++    else if (
++            (input.pressed & pkgi_ok_button()) && n > 0 &&
++            rows[_selected].retryable)
++        _downloader.retry(rows[_selected].type, rows[_selected].content);
+ 
+     // ── Window ───────────────────────────────────────────────────────────────
+     ImGui::SetNextWindowPos(
+@@ -175,7 +184,7 @@ void DownloadsView::render(const pkgi_input& input)
+     ImGui::EndChild();
+ 
+     ImGui::Separator();
+-    ImGui::TextDisabled("[Up/Down] select   [X] cancel download   [Circle] close");
++    ImGui::TextDisabled("[Up/Down] select   [X] cancel / try again   [Circle] close");
+ 
+     ImGui::End();
+ }
+diff --git a/src/pkgi.cpp b/src/pkgi.cpp
+index 83843ff..f051c57 100644
+--- a/src/pkgi.cpp
++++ b/src/pkgi.cpp
+@@ -1191,14 +1191,23 @@ void pkgi_do_tail(Downloader& downloader)
+         else
+             sspeed = fmt::format("{} B/s", speed);
+ 
+-        pkgi_snprintf(
+-                text,
+-                sizeof(text),
+-                "Downloading %s: %s (%s, %d%%)",
+-                type_to_string(current_download->type).c_str(),
+-                current_download->name.c_str(),
+-                sspeed.c_str(),
+-                static_cast<int>(download_offset * 100 / download_size));
++        const auto status = downloader.get_status();
++        if (!status.empty())
++            pkgi_snprintf(
++                    text,
++                    sizeof(text),
++                    "%s: %s",
++                    status.c_str(),
++                    current_download->name.c_str());
++        else
++            pkgi_snprintf(
++                    text,
++                    sizeof(text),
++                    "Downloading %s: %s (%s, %d%%)",
++                    type_to_string(current_download->type).c_str(),
++                    current_download->name.c_str(),
++                    sspeed.c_str(),
++                    static_cast<int>(download_offset * 100 / download_size));
+     }
+     else
+         pkgi_snprintf(text, sizeof(text), "Idle");
+@@ -1554,6 +1563,7 @@ int main()
+         bottom_y = VITA_HEIGHT - 2 * font_height - PKGI_MAIN_ROW_PADDING;
+ 
+         pkgi_open_db();
++        downloader.resume_saved();
+ 
+         browse_view = std::make_unique<BrowseView>(
+         config,
+diff --git a/src/vitahttp.cpp b/src/vitahttp.cpp
+index 9efdbf3..eb7c610 100644
+--- a/src/vitahttp.cpp
++++ b/src/vitahttp.cpp
+@@ -73,7 +73,8 @@ void VitaHttp::start(const std::string& url, uint64_t offset)
+         if (tmpl > 0)
+             sceHttpDeleteTemplate(tmpl);
+     };
+-    // sceHttpSetRecvTimeOut(tmpl, 10 * 1000 * 1000);
++    // a dead connection must fail (and be retried) instead of hanging forever
++    sceHttpSetRecvTimeOut(tmpl, 30 * 1000 * 1000);
+ 
+     if ((conn = sceHttpCreateConnectionWithURL(tmpl, url.c_str(), SCE_FALSE)) <
+         0)

@@ -55,17 +55,52 @@ class DownloadKeepAliveService : Service() {
         goForeground(buildOngoing(getString(R.string.pkgj_bg_starting)))
         acquireLocks()
         startBytes = safeBytes()
+        lastDataMs = 0L
+        lastStatus = null
+        speedAvg = 0.0
+        notificationTitle = null
+        progressPercent = -1
         lastBytes = startBytes
         lastTimeMs = System.currentTimeMillis()
         handler.postDelayed(poll, POLL_MS)
         return START_NOT_STICKY
     }
 
+    private class PkgjStatus(private val map: Map<String, String>) {
+        val state get() = map["state"].orEmpty()
+        val name get() = map["name"].orEmpty()
+        val msg get() = map["msg"].orEmpty()
+        val kind get() = map["kind"].orEmpty()
+        val percent get() = map["percent"]?.toIntOrNull() ?: 0
+        val done get() = map["done"]?.toLongOrNull() ?: 0L
+        val total get() = map["total"]?.toLongOrNull() ?: 0L
+        val queue get() = map["queue"]?.toIntOrNull() ?: 0
+        val attempt get() = map["attempt"]?.toIntOrNull() ?: 0
+        val max get() = map["max"]?.toIntOrNull() ?: 5
+        val age get() = map["age"]?.toLongOrNull() ?: Long.MAX_VALUE
+    }
+
+    private fun readStatus(): PkgjStatus? {
+        val text = runCatching { NativeLib.getPkgjStatus() }.getOrDefault("")
+        if (text.isBlank()) return null
+        val map = text.lineSequence().mapNotNull {
+            val i = it.indexOf('=')
+            if (i > 0) it.substring(0, i) to it.substring(i + 1) else null
+        }.toMap()
+        return PkgjStatus(map)
+    }
+
+    private var lastDataMs = 0L
+    private var lastStatus: PkgjStatus? = null
+    private var speedAvg = 0.0
+
     private val poll = object : Runnable {
         override fun run() {
             if (!running) return
             val appRunning = runCatching { NativeLib.isAppRunning() }.getOrDefault(false)
             val active = runCatching { NativeLib.isBackgroundWorkActive() }.getOrDefault(false)
+            val status = readStatus()
+            if (status != null) lastStatus = status
             if (!appRunning) {
                 finish(showDone = false)
                 return
@@ -73,7 +108,7 @@ class DownloadKeepAliveService : Service() {
             if (!active) {
                 // nothing left to do: pause like a normal backgrounded app
                 pauseEmulation()
-                finish(showDone = sawData)
+                finish(showDone = sawData || lastStatus?.state == "error")
                 return
             }
 
@@ -81,19 +116,68 @@ class DownloadKeepAliveService : Service() {
             val bytes = safeBytes()
             val deltaBytes = (bytes - lastBytes).coerceAtLeast(0L)
             val deltaSec = ((now - lastTimeMs) / 1000.0).coerceAtLeast(0.001)
-            if (deltaBytes > 0L) sawData = true
-            val speed = deltaBytes / deltaSec
-            val text = if (deltaBytes > 0L) {
-                getString(R.string.pkgj_bg_progress, mb(bytes - startBytes), mb(speed.toLong()))
-            } else {
-                getString(R.string.pkgj_bg_working, mb(bytes - startBytes))
+            if (deltaBytes > 0L) {
+                sawData = true
+                lastDataMs = now
+                val speed = deltaBytes / deltaSec
+                speedAvg = if (speedAvg == 0.0) speed else speedAvg * 0.7 + speed * 0.3
             }
             lastBytes = bytes
             lastTimeMs = now
-            notifyOngoing(text)
+            notifyOngoing(buildText(status, now))
             handler.postDelayed(this, POLL_MS)
         }
     }
+
+    /** Text of the ongoing notification; also sets the progress bar through [progressPercent]. */
+    private fun buildText(status: PkgjStatus?, now: Long): String {
+        progressPercent = -1
+        if (status == null) {
+            return getString(R.string.pkgj_bg_working, mb(lastBytes - startBytes))
+        }
+        val title = status.name.ifBlank { getString(R.string.pkgj_bg_title) }
+        notificationTitle = title
+        val queue = if (status.queue > 0) getString(R.string.pkgj_bg_queue, status.queue) else ""
+        return when (status.state) {
+            "retrying" -> getString(R.string.pkgj_bg_retry, status.attempt, status.max, status.msg)
+            "installing" -> getString(R.string.pkgj_bg_installing) + queue
+            "downloading" -> {
+                progressPercent = status.percent
+                val idleSec = if (lastDataMs == 0L) 0L else (now - lastDataMs) / 1000
+                if (lastDataMs != 0L && idleSec >= 30) {
+                    getString(R.string.pkgj_bg_stalled, status.percent, idleSec)
+                } else {
+                    val eta = if (speedAvg > 1000 && status.total > status.done) {
+                        formatEta(((status.total - status.done) / speedAvg).toLong())
+                    } else ""
+                    getString(R.string.pkgj_bg_progress2, status.percent, mb(speedAvg.toLong())) +
+                        (if (eta.isNotEmpty()) " · $eta" else "") + queue
+                }
+            }
+            else -> getString(R.string.pkgj_bg_working, mb(lastBytes - startBytes))
+        }
+    }
+
+    private fun formatEta(sec: Long): String = when {
+        sec >= 3600 -> getString(R.string.pkgj_bg_eta_h, sec / 3600, (sec % 3600) / 60)
+        sec >= 60 -> getString(R.string.pkgj_bg_eta_m, sec / 60)
+        else -> getString(R.string.pkgj_bg_eta_s, sec)
+    }
+
+    private fun errorExplanation(status: PkgjStatus): String {
+        val hint = when (status.kind) {
+            "network" -> getString(R.string.pkgj_err_network)
+            "disk" -> getString(R.string.pkgj_err_disk)
+            "server" -> getString(R.string.pkgj_err_server)
+            "integrity" -> getString(R.string.pkgj_err_integrity)
+            "install" -> getString(R.string.pkgj_err_install)
+            else -> ""
+        }
+        return if (hint.isEmpty()) status.msg else status.msg + "\n" + hint
+    }
+
+    private var progressPercent = -1
+    private var notificationTitle: String? = null
 
     private fun safeBytes(): Long = runCatching { NativeLib.getNetReceivedBytes() }.getOrDefault(0L)
 
@@ -110,16 +194,21 @@ class DownloadKeepAliveService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         if (showDone) {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(
-                DONE_NOTIFICATION_ID,
-                NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle(getString(R.string.pkgj_bg_title))
+            val failed = lastStatus?.takeIf { it.state == "error" }
+            val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setAutoCancel(true)
+                .setContentIntent(openAppIntent())
+            if (failed != null) {
+                val text = errorExplanation(failed)
+                builder.setContentTitle(getString(R.string.pkgj_bg_failed, failed.name))
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            } else {
+                builder.setContentTitle(getString(R.string.pkgj_bg_title))
                     .setContentText(getString(R.string.pkgj_bg_done, mb(lastBytes - startBytes)))
-                    .setAutoCancel(true)
-                    .setContentIntent(openAppIntent())
-                    .build()
-            )
+            }
+            manager.notify(DONE_NOTIFICATION_ID, builder.build())
         }
         stopSelf()
     }
@@ -142,13 +231,14 @@ class DownloadKeepAliveService : Service() {
 
     private fun buildOngoing(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
-        .setContentTitle(getString(R.string.pkgj_bg_title))
+        .setContentTitle(notificationTitle ?: getString(R.string.pkgj_bg_title))
+        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
         .setContentText(text)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setCategory(NotificationCompat.CATEGORY_PROGRESS)
         .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setProgress(0, 0, true)
+        .setProgress(if (progressPercent >= 0) 100 else 0, progressPercent.coerceAtLeast(0), progressPercent < 0)
         .setContentIntent(openAppIntent())
         .addAction(
             0,
