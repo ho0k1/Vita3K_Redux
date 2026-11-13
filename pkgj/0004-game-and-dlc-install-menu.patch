@@ -1,0 +1,244 @@
+diff --git a/src/gameview.cpp b/src/gameview.cpp
+index 21407fc..0b16c8a 100644
+--- a/src/gameview.cpp
++++ b/src/gameview.cpp
+@@ -887,22 +887,146 @@ void GameView::do_download(PspInstallMode psp_install_mode) {
+     _item->presence = PresenceUnknown;
+ }
+ 
++namespace
++{
++// DLCs of a game: the DLC list keeps the title id of the game it belongs to
++std::vector<DbItem> find_dlcs(const std::string& titleid)
++{
++    std::vector<DbItem> result;
++    try
++    {
++        TitleDatabase dlc_db(pkgi_get_config_folder());
++        dlc_db.reload(
++                ModeDlcs, DbFilterAll, SortByName, SortAscending, "", {});
++        for (uint32_t i = 0; i < dlc_db.count(); ++i)
++        {
++            DbItem* dlc = dlc_db.get(i);
++            if (dlc && dlc->titleid == titleid)
++                result.push_back(*dlc);
++        }
++    }
++    catch (const std::exception& e)
++    {
++        LOGF("DLC lookup failed: {}", e.what());
++    }
++    return result;
++}
++
++void queue_dlcs(Downloader* downloader, const std::vector<DbItem>& dlcs)
++{
++    for (const auto& dlc : dlcs)
++    {
++        if (pkgi_dlc_is_installed(dlc.content.c_str()) ||
++            downloader->is_in_queue(Dlc, dlc.content))
++            continue;
++        pkgi_start_dlc_download(*downloader, dlc);
++    }
++}
++}
++
+ void GameView::start_download_package(PspInstallMode psp_install_mode)
+ {
+-    if (_item->presence == PresenceInstalled)
++    if (!is_vita_mode())
++    {
++        if (_item->presence == PresenceInstalled)
++        {
++            pkgi_dialog_question(
++                    fmt::format(
++                            "{} is already installed. "
++                            "Would you like to redownload it?",
++                            _item->name)
++                            .c_str(),
++                    {{"Redownload.",
++                      [this, psp_install_mode]
++                      { this->do_download(psp_install_mode); }},
++                     {"Dont Redownload.", [] {}}});
++            return;
++        }
++        this->do_download(psp_install_mode);
++        return;
++    }
++
++    // One button for the game and its DLCs
++    const auto dlcs = find_dlcs(_item->titleid);
++    std::vector<DbItem> missing;
++    int64_t missing_size = 0;
++    for (const auto& dlc : dlcs)
++    {
++        if (pkgi_dlc_is_installed(dlc.content.c_str()) ||
++            _downloader->is_in_queue(Dlc, dlc.content))
++            continue;
++        missing.push_back(dlc);
++        missing_size += dlc.size;
++    }
++    LOGF("[{}] {} DLC(s) found, {} not installed",
++         _item->titleid,
++         dlcs.size(),
++         missing.size());
++
++    const bool installed = _item->presence == PresenceInstalled;
++    Downloader* downloader = _downloader;
++    const auto game_only = [this, psp_install_mode]
++    { this->do_download(psp_install_mode); };
++    const auto dlc_only = [downloader, missing]
++    { queue_dlcs(downloader, missing); };
++    const auto game_and_dlc =
++            [this, psp_install_mode, downloader, missing]
++    {
++        this->do_download(psp_install_mode);
++        queue_dlcs(downloader, missing);
++    };
++    const auto cancel = [] {};
++
++    const std::string dlc_info = fmt::format(
++            "{} DLC available ({}).", missing.size(), friendly_size(missing_size));
++
++    if (!installed)
++    {
++        if (missing.empty())
++        {
++            pkgi_dialog_question(
++                    fmt::format(
++                            "Install {}?\n{}",
++                            _item->name,
++                            dlcs.empty() ? "This game has no DLC."
++                                         : "All its DLCs are already "
++                                           "installed or queued.")
++                            .c_str(),
++                    {{"Game", game_only}, {"Cancel", cancel}});
++        }
++        else
++        {
++            pkgi_dialog_question(
++                    fmt::format("Install {}?\n{}", _item->name, dlc_info)
++                            .c_str(),
++                    {{"Game only", game_only},
++                     {fmt::format("Game + all DLC ({})", missing.size()),
++                      game_and_dlc},
++                     {"Cancel", cancel}});
++        }
++        return;
++    }
++
++    LOGF("[{}] {} - already installed", _item->titleid, _item->name);
++    if (!missing.empty())
+     {
+-        LOGF("[{}] {} - already installed", _item->titleid, _item->name);
+         pkgi_dialog_question(
+-        fmt::format(
+-                "{} is already installed."
+-                "Would you like to redownload it?",
+-                _item->name)
+-                .c_str(),
+-        {{"Redownload.", [this, psp_install_mode] { this->do_download(psp_install_mode); }},
+-         {"Dont Redownload.", [] {} }});
++                fmt::format("{} is installed.\n{}", _item->name, dlc_info)
++                        .c_str(),
++                {{fmt::format("Download DLC ({})", missing.size()), dlc_only},
++                 {"Redownload game", game_only},
++                 {"Cancel", cancel}});
+         return;
+     }
+-    this->do_download(psp_install_mode);
++
++    pkgi_dialog_question(
++            fmt::format(
++                    "{} is already installed.{}\nWould you like to redownload "
++                    "it?",
++                    _item->name,
++                    dlcs.empty() ? "" : " All its DLCs are installed too.")
++                    .c_str(),
++            {{"Redownload.", game_only}, {"Dont Redownload.", cancel}});
+ }
+ 
+ void GameView::cancel_download_package()
+diff --git a/src/pkgi.cpp b/src/pkgi.cpp
+index b9b6121..83843ff 100644
+--- a/src/pkgi.cpp
++++ b/src/pkgi.cpp
+@@ -1016,18 +1016,10 @@ void pkgi_do_main(Downloader& downloader, pkgi_input* input)
+             if (!downloads_view)
+                 downloads_view = std::make_unique<DownloadsView>(downloader);
+         }
+-        else if (mode == ModeDlcs) 
++        else
+         {
++            // no square action in the other lists
+             input->pressed &= ~PKGI_BUTTON_S;
+-            DbItem* item = db->get(selected_item);
+-            if(std::find(selected_items.begin(), selected_items.end(), item) != selected_items.end())
+-            {
+-                selected_items.erase(std::find(selected_items.begin(),selected_items.end(), item));
+-            }
+-            else if(selected_items.size() < 32 - pkgi_list_dir_contents("ux0:bgdl/t").size())
+-            {
+-                selected_items.push_back(item);
+-            }
+         }
+     }
+     else if (input && (input->pressed & PKGI_BUTTON_T))
+@@ -1212,11 +1204,6 @@ void pkgi_do_tail(Downloader& downloader)
+         pkgi_snprintf(text, sizeof(text), "Idle");
+ 
+     pkgi_draw_text(0, bottom_y, PKGI_COLOR_TEXT_TAIL, text);
+-    if (mode == ModeDlcs) 
+-    {
+-        pkgi_snprintf(text, sizeof(text), "Selected items: %d/%d", selected_items.size(), 32 - pkgi_list_dir_contents("ux0:bgdl/t").size());
+-        pkgi_draw_text((VITA_WIDTH - pkgi_text_width(text)) / 2, bottom_y, PKGI_COLOR_TEXT_TAIL, text);
+-    }
+     const auto second_line = bottom_y + font_height + PKGI_MAIN_ROW_PADDING;
+ 
+     uint32_t count = db->count();
+@@ -1278,7 +1265,7 @@ void pkgi_do_tail(Downloader& downloader)
+         if (mode == ModeGames || mode == ModePspGames)
+         {
+             bottom_text += fmt::format("{} details ", pkgi_get_ok_str());
+-            bottom_text += PKGI_UTF8_S " flag ";
++            bottom_text += PKGI_UTF8_S " downloads ";
+         }
+         else
+         {
+@@ -1289,8 +1276,6 @@ void pkgi_do_tail(Downloader& downloader)
+                 bottom_text += fmt::format("{} install ", pkgi_get_ok_str());
+         }
+         bottom_text += PKGI_UTF8_T " menu ";
+-        if (mode == ModeDlcs)
+-            bottom_text += PKGI_UTF8_S " select";
+     }
+ 
+     pkgi_clip_set(
+@@ -1525,6 +1510,15 @@ void pkgi_start_download(
+     }
+ }
+ 
++void pkgi_start_dlc_download(Downloader& downloader, const DbItem& item)
++{
++    // pkgi_start_download decides what to do from the current list mode
++    const Mode saved_mode = mode;
++    mode = ModeDlcs;
++    pkgi_start_download(downloader, item);
++    mode = saved_mode;
++}
++
+ int main()
+ {
+     pkgi_start();
+diff --git a/src/pkgi.hpp b/src/pkgi.hpp
+index 88bb8d2..5bf9cdf 100644
+--- a/src/pkgi.hpp
++++ b/src/pkgi.hpp
+@@ -133,4 +133,7 @@ void pkgi_start_download(
+         const DbItem& item,
+         PspInstallMode psp_install_mode = PspInstallMode::Auto);
+ 
++// Starts the download of a DLC while another mode (the game list) is shown
++void pkgi_start_dlc_download(Downloader& downloader, const DbItem& item);
++
+ bool pkgi_is_module_present(const char* module_name);
