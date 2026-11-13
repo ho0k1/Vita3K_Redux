@@ -1,0 +1,414 @@
+diff --git a/cross.cmake b/cross.cmake
+index e08bf7c..471ec88 100644
+--- a/cross.cmake
++++ b/cross.cmake
+@@ -69,6 +69,7 @@ add_executable(pkgj
+   src/screenshotfetcher.cpp
+   src/logbuffer.cpp
+   src/logviewer.cpp
++  src/downloadsview.cpp
+   src/patchinfo.cpp
+   src/patchinfofetcher.cpp
+   src/psx.cpp
+diff --git a/host.cmake b/host.cmake
+index 8094232..4f70c1c 100644
+--- a/host.cmake
++++ b/host.cmake
+@@ -69,6 +69,7 @@ if(BUILD_SIM)
+     src/thumbnailfetcher.cpp
+     src/logbuffer.cpp
+     src/logviewer.cpp
++    src/downloadsview.cpp
+     src/menu.cpp
+     src/patchinfo.cpp
+     src/patchinfofetcher.cpp
+diff --git a/src/downloader.cpp b/src/downloader.cpp
+index a052bab..ee8e396 100644
+--- a/src/downloader.cpp
++++ b/src/downloader.cpp
+@@ -82,6 +82,18 @@ std::optional<DownloadItem> Downloader::get_current_download()
+     return _current_download;
+ }
+ 
++std::vector<DownloadItem> Downloader::get_queue()
++{
++    ScopeLock _(_cond.get_mutex());
++    return std::vector<DownloadItem>(_queue.begin(), _queue.end());
++}
++
++std::vector<DownloadHistoryEntry> Downloader::get_history()
++{
++    ScopeLock _(_cond.get_mutex());
++    return std::vector<DownloadHistoryEntry>(_history.begin(), _history.end());
++}
++
+ std::tuple<uint64_t, uint64_t> Downloader::get_current_download_progress()
+ {
+     return {_download_offset.load(), _download_size.load()};
+@@ -129,6 +141,7 @@ void Downloader::run()
+                 _cond.wait();
+         }
+ 
++        std::string failure;
+         try
+         {
+             if (!item.content.empty())
+@@ -137,8 +150,23 @@ void Downloader::run()
+         catch (const std::exception& e)
+         {
+             LOG_ERR("Download failed: %s", e.what());
++            failure = e.what();
+             error(e.what());
+         }
++
++        if (!item.content.empty())
++        {
++            ScopeLock _(_cond.get_mutex());
++            _history.push_back(
++                    {item.type,
++                     item.name,
++                     item.content,
++                     !failure.empty() ? "Failed: " + failure
++                                      : (_cancel_current ? "Canceled"
++                                                         : "Installed")});
++            while (_history.size() > 20)
++                _history.pop_front();
++        }
+     }
+ }
+ 
+diff --git a/src/downloader.hpp b/src/downloader.hpp
+index b0217c4..b81f0fc 100644
+--- a/src/downloader.hpp
++++ b/src/downloader.hpp
+@@ -36,6 +36,15 @@ struct DownloadItem
+     std::string version;
+ };
+ 
++struct DownloadHistoryEntry
++{
++    Type type;
++    std::string name;
++    std::string content;
++    // "Installed", "Canceled" or "Failed: <reason>"
++    std::string status;
++};
++
+ std::string type_to_string(Type type);
+ 
+ class Downloader
+@@ -53,6 +62,8 @@ public:
+     void remove_from_queue(Type type, const std::string& contentid);
+     bool is_in_queue(Type type, const std::string& titleid);
+     std::optional<DownloadItem> get_current_download();
++    std::vector<DownloadItem> get_queue();
++    std::vector<DownloadHistoryEntry> get_history();
+     std::tuple<uint64_t, uint64_t> get_current_download_progress();
+ 
+     std::function<void(const std::string& content)> refresh;
+@@ -63,6 +74,7 @@ private:
+ 
+     Cond _cond;
+     std::deque<DownloadItem> _queue;
++    std::deque<DownloadHistoryEntry> _history;
+ 
+     DownloadItem _current_download;
+     bool _cancel_current = false;
+diff --git a/src/downloadsview.cpp b/src/downloadsview.cpp
+new file mode 100644
+index 0000000..24b708a
+--- /dev/null
++++ b/src/downloadsview.cpp
+@@ -0,0 +1,181 @@
++#include "downloadsview.hpp"
++
++#include <fmt/format.h>
++
++#include <algorithm>
++#include <string>
++#include <vector>
++
++#include "imgui.hpp"
++
++extern "C"
++{
++#include "style.h"
++}
++
++namespace
++{
++constexpr float ViewerW = VITA_WIDTH * 0.9f;
++constexpr float ViewerH = VITA_HEIGHT * 0.85f;
++
++std::string friendly_bytes(uint64_t size)
++{
++    if (size < 1000ULL * 1000)
++        return fmt::format("{:.0f} kB", static_cast<double>(size) / 1000.0);
++    if (size < 1000ULL * 1000 * 1000)
++        return fmt::format(
++                "{:.1f} MB", static_cast<double>(size) / 1000.0 / 1000.0);
++    return fmt::format(
++            "{:.2f} GB", static_cast<double>(size) / 1000.0 / 1000.0 / 1000.0);
++}
++
++struct Row
++{
++    std::string text;
++    ImVec4 color;
++    bool cancelable;
++    Type type;
++    std::string content;
++};
++}
++
++void DownloadsView::render(const pkgi_input& input)
++{
++    // ── Build the rows: running, queued, history (newest first) ──────────────
++    std::vector<Row> rows;
++    const ImVec4 white(1.f, 1.f, 1.f, 1.f);
++    const ImVec4 green(0.3f, 1.f, 0.5f, 1.f);
++    const ImVec4 yellow(1.f, 0.88f, 0.25f, 1.f);
++    const ImVec4 red(1.f, 0.35f, 0.35f, 1.f);
++    const ImVec4 dim(0.6f, 0.65f, 0.75f, 1.f);
++
++    const auto current = _downloader.get_current_download();
++    if (current)
++    {
++        uint64_t offset;
++        uint64_t size;
++        std::tie(offset, size) = _downloader.get_current_download_progress();
++        std::string progress = "starting...";
++        if (size > 0)
++            progress = fmt::format(
++                    "{}%  {} / {}",
++                    static_cast<int>(offset * 100 / size),
++                    friendly_bytes(offset),
++                    friendly_bytes(size));
++        rows.push_back(
++                {fmt::format(
++                         "[Downloading] {} ({})  {}",
++                         current->name,
++                         type_to_string(current->type),
++                         progress),
++                 green,
++                 true,
++                 current->type,
++                 current->content});
++    }
++
++    for (const auto& item : _downloader.get_queue())
++        rows.push_back(
++                {fmt::format(
++                         "[Queued] {} ({})",
++                         item.name,
++                         type_to_string(item.type)),
++                 yellow,
++                 true,
++                 item.type,
++                 item.content});
++
++    const auto history = _downloader.get_history();
++    for (auto it = history.rbegin(); it != history.rend(); ++it)
++    {
++        const bool ok = it->status == "Installed";
++        const bool failed = it->status.rfind("Failed", 0) == 0;
++        rows.push_back(
++                {fmt::format(
++                         "[{}] {} ({})",
++                         it->status,
++                         it->name,
++                         type_to_string(it->type)),
++                 ok ? white : (failed ? red : dim),
++                 false,
++                 it->type,
++                 it->content});
++    }
++
++    const int n = static_cast<int>(rows.size());
++
++    // ── Navigation (same repeat behaviour as the main list) ──────────────────
++    bool nav_step = false;
++    if ((input.active & PKGI_BUTTON_UP) && n > 0)
++    {
++        _selected = std::max(0, _selected - 1);
++        nav_step = true;
++    }
++    else if ((input.active & PKGI_BUTTON_DOWN) && n > 0)
++    {
++        _selected = std::min(n - 1, _selected + 1);
++        nav_step = true;
++    }
++    _selected = n == 0 ? 0 : std::max(0, std::min(_selected, n - 1));
++
++    // X cancels the selected running or queued download
++    if ((input.pressed & pkgi_ok_button()) && n > 0 &&
++        rows[_selected].cancelable)
++        _downloader.remove_from_queue(
++                rows[_selected].type, rows[_selected].content);
++
++    // ── Window ───────────────────────────────────────────────────────────────
++    ImGui::SetNextWindowPos(
++            ImVec2((VITA_WIDTH - ViewerW) / 2.f,
++                   (VITA_HEIGHT - ViewerH) / 2.f));
++    ImGui::SetNextWindowSize(ImVec2(ViewerW, ViewerH), 0);
++
++    ImGui::Begin(
++            "Downloads###downloadsview",
++            nullptr,
++            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
++                    ImGuiWindowFlags_NoCollapse |
++                    ImGuiWindowFlags_NoSavedSettings |
++                    ImGuiWindowFlags_NoScrollbar |
++                    ImGuiWindowFlags_NoScrollWithMouse);
++
++    ImGui::Text("Downloads: %d", n);
++    ImGui::Separator();
++
++    const float footer_h =
++            ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
++
++    ImGui::BeginChild(
++            "##downloadrows",
++            ImVec2(0.f, -footer_h),
++            false,
++            ImGuiWindowFlags_NoNav);
++
++    if (n == 0)
++    {
++        ImGui::TextDisabled("(no downloads yet)");
++    }
++    else
++    {
++        for (int i = 0; i < n; ++i)
++        {
++            ImGui::PushID(i);
++            ImGui::PushStyleColor(ImGuiCol_Text, rows[i].color);
++            ImGui::Selectable(
++                    rows[i].text.c_str(),
++                    i == _selected,
++                    ImGuiSelectableFlags_Disabled);
++            ImGui::PopStyleColor();
++            if (i == _selected && nav_step)
++                ImGui::SetScrollHereY(0.5f);
++            ImGui::PopID();
++        }
++    }
++
++    ImGui::EndChild();
++
++    ImGui::Separator();
++    ImGui::TextDisabled("[Up/Down] select   [X] cancel download   [Circle] close");
++
++    ImGui::End();
++}
+diff --git a/src/downloadsview.hpp b/src/downloadsview.hpp
+new file mode 100644
+index 0000000..d25a57f
+--- /dev/null
++++ b/src/downloadsview.hpp
+@@ -0,0 +1,31 @@
++#pragma once
++
++#include "downloader.hpp"
++#include "pkgi.hpp"
++
++// "Downloads" screen: the running download, the queue and the latest results.
++// Opened with the Square button in the game list.
++class DownloadsView
++{
++public:
++    explicit DownloadsView(Downloader& downloader) : _downloader(downloader)
++    {
++    }
++
++    // input: raw snapshot BEFORE pkgi.cpp zeros it.
++    void render(const pkgi_input& input);
++
++    bool is_closed() const
++    {
++        return _closed;
++    }
++    void close()
++    {
++        _closed = true;
++    }
++
++private:
++    Downloader& _downloader;
++    int _selected{0};
++    bool _closed{false};
++};
+diff --git a/src/pkgi.cpp b/src/pkgi.cpp
+index 5c5bd5a..b9b6121 100644
+--- a/src/pkgi.cpp
++++ b/src/pkgi.cpp
+@@ -18,6 +18,7 @@ extern "C"
+ #include "imgui.hpp"
+ #include "install.hpp"
+ #include "logviewer.hpp"
++#include "downloadsview.hpp"
+ #include "menu.hpp"
+ #include "browserview.hpp"
+ #include "update.hpp"
+@@ -96,6 +97,7 @@ std::set<std::string> installed_themes;
+ std::unique_ptr<GameView> gameview;
+ std::unique_ptr<ConfigEditor> config_editor;
+ std::unique_ptr<LogViewer> log_viewer;
++std::unique_ptr<DownloadsView> downloads_view;
+ std::unique_ptr<BrowseView> browse_view;
+ std::unique_ptr<AnnotationDatabase> annotation_db;
+ bool need_refresh = true;
+@@ -105,7 +107,7 @@ void pkgi_reload();
+ 
+ bool pkgi_overlay_is_open()
+ {
+-    return gameview || config_editor || log_viewer;
++    return gameview || config_editor || log_viewer || downloads_view;
+ }
+ 
+ const char* pkgi_get_ok_str(void)
+@@ -1009,8 +1011,10 @@ void pkgi_do_main(Downloader& downloader, pkgi_input* input)
+         */
+         if (mode == ModeGames || mode == ModePspGames)
+         {
+-            // flags were removed; the S button does nothing here
++            // Square opens the Downloads screen (it replaced the removed flags)
+             input->pressed &= ~PKGI_BUTTON_S;
++            if (!downloads_view)
++                downloads_view = std::make_unique<DownloadsView>(downloader);
+         }
+         else if (mode == ModeDlcs) 
+         {
+@@ -1648,7 +1652,7 @@ int main()
+             const bool has_imgui_overlay =
+                     gameview || config_editor || pkgi_dialog_is_open();
+ 
+-            if (has_imgui_overlay || log_viewer)
++            if (has_imgui_overlay || log_viewer || downloads_view)
+             {
+                 // Feed D-pad to ImGui only for ImGui-managed overlays
+                 if (has_imgui_overlay)
+@@ -1682,6 +1686,8 @@ int main()
+                         config_editor->close();
+                     else if (log_viewer)
+                         log_viewer->close();
++                    else if (downloads_view)
++                        downloads_view->close();
+                 }
+                 if ((input.pressed & PKGI_BUTTON_T) && config_editor)
+                     config_editor->save_and_close();
+@@ -1803,6 +1809,14 @@ int main()
+                     log_viewer->render(input_snapshot);
+             }
+ 
++            if (downloads_view)
++            {
++                if (downloads_view->is_closed())
++                    downloads_view = nullptr;
++                else
++                    downloads_view->render(input_snapshot);
++            }
++
+             if (pkgi_dialog_is_open())
+             {
+                 pkgi_do_dialog();
