@@ -490,7 +490,7 @@ bool init_rack(State &ngs, MemState &mem, System *system, SceNgsBufferInfo *init
     return true;
 }
 
-void release_rack(State &ngs, MemState &mem, System *system, Rack *rack) {
+void release_rack(State &ngs, MemState &mem, System *system, Rack *rack, bool detach_only) {
     LOG_DEBUG("[NGSLIFE] release_rack {} ({} voices)", fmt::ptr(rack), rack ? rack->voices.size() : 0);
     // this function should only be called outside of ngs update and with the scheduler mutex acquired (except when releasing the system)
     if (!rack)
@@ -540,6 +540,17 @@ void release_rack(State &ngs, MemState &mem, System *system, Rack *rack) {
         pending.swap(kept);
     }
 
+    if (detach_only) {
+        LOG_INFO("[NGSLIFE] release_rack {}: detached without destroying ({} voices)", fmt::ptr(rack), rack->voices.size());
+        for (const auto &voice : rack->voices) {
+            if (Voice *v = voice.get(mem))
+                system->voice_scheduler.deque_voice(v);
+        }
+        vector_utils::erase_first(system->racks, rack);
+        return;
+    }
+
+    LOG_INFO("[NGSLIFE] release_rack {}: destroying {} voices", fmt::ptr(rack), rack->voices.size());
     // remove all queued voices
     for (const auto &voice : rack->voices) {
         Voice *v = voice.get(mem);
@@ -556,10 +567,12 @@ void release_rack(State &ngs, MemState &mem, System *system, Rack *rack) {
     // remove from system
     vector_utils::erase_first(system->racks, rack);
 
+    LOG_INFO("[NGSLIFE] release_rack {}: voices destroyed, freeing the rack", fmt::ptr(rack));
     // free pointer memory
     const Address memspace = rack->memspace.address();
     rack->~Rack();
     unpin_from_arena(mem, memspace);
+    LOG_INFO("[NGSLIFE] release_rack {}: done", fmt::ptr(rack));
 }
 
 Ptr<VoiceDefinition> get_voice_definition(State &ngs, MemState &mem, ngs::BussType type) {

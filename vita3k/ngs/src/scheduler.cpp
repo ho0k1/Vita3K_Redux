@@ -303,7 +303,7 @@ void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID threa
             if (std::find(op.system->racks.begin(), op.system->racks.end(), op.release_data.rack) == op.system->racks.end())
                 break;
             const SceNgsCallbackInfo info = op.release_data.rack->release_callback_info(mem);
-            release_rack(*op.release_data.state, mem, op.system, op.release_data.rack);
+            release_rack(*op.release_data.state, mem, op.system, op.release_data.rack, /*detach_only=*/op.release_data.callback == 0);
             if (op.release_data.callback) {
                 scheduler_lock.unlock();
                 ngs::invoke_callback(kern, mem, thread_id, Ptr<void>(op.release_data.callback), info);
