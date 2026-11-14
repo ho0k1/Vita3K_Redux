@@ -15,8 +15,15 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-#include <cstring>
 #include <net/socket.h>
+#include <util/log.h>
+
+#include <atomic>
+#include <cerrno>
+#include <cstring>
+#ifndef _WIN32
+#include <poll.h>
+#endif
 
 // NOTE: This should be SCE_NET_##errname but it causes vitaQuake to softlock in online games
 #ifdef _WIN32
@@ -156,13 +163,53 @@ static bool should_abort(int abort_flags, int flags) {
     return (abort_flags & flags) != 0;
 }
 
+// real host errors that explain "connection lost": reset, timeout, no route... (first 60 only, then silence)
+static void note_host_error(const char *what, int res) {
+#ifndef _WIN32
+    if (res >= 0)
+        return;
+    const int e = errno;
+    if (e == EAGAIN || e == EINPROGRESS || e == EWOULDBLOCK)
+        return;
+    static std::atomic<int> logged{ 0 };
+    if (logged.fetch_add(1) < 60)
+        LOG_WARN("[NET] host {} failed: errno={} ({})", what, e, strerror(e));
+    errno = e; // logging must not change the error code the caller translates
+#else
+    (void)what;
+    (void)res;
+#endif
+}
+
 int PosixSocket::connect(const SceNetSockaddr *addr, unsigned int addrlen) {
     if (should_abort(abort_flags, SCE_NET_SOCKET_ABORT_FLAG_SND_PRESERVATION))
         return SCE_NET_ERROR_EINTR;
 
     sockaddr addr2{};
     convertSceSockaddrToPosix(addr, &addr2);
-    const auto res = ::connect(sock, &addr2, sizeof(sockaddr_in));
+    int res = ::connect(sock, &addr2, sizeof(sockaddr_in));
+#ifndef _WIN32
+    // connect() interrupted by a host signal: the connection keeps going, it must not look like a Vita abort
+    if (res < 0 && errno == EINTR && !is_aborted) {
+        pollfd pfd{ sock, POLLOUT, 0 };
+        for (int i = 0; i < 100 && !is_aborted; ++i) {
+            const int pr = ::poll(&pfd, 1, 300);
+            if (pr > 0) {
+                int soerr = 0;
+                socklen_t len = sizeof(soerr);
+                getsockopt(sock, SOL_SOCKET, SO_ERROR, &soerr, &len);
+                if (soerr == 0)
+                    res = 0;
+                else
+                    errno = soerr;
+                break;
+            }
+            if (pr < 0 && errno != EINTR)
+                break;
+        }
+    }
+#endif
+    note_host_error("connect", res);
 
     if (abort_pending(is_aborted))
         return SCE_NET_ERROR_EINTR;
@@ -208,6 +255,7 @@ int PosixSocket::get_socket_address(SceNetSockaddr *addr, unsigned int *addrlen)
 }
 
 int PosixSocket::abort(int flags) {
+    LOG_INFO("[NET] sceNetSocketAbort sock={} flags={}", static_cast<int>(sock), flags);
     abort_flags |= flags;
     is_aborted = true;
 
@@ -483,14 +531,23 @@ int PosixSocket::recv_packet(void *buf, unsigned int len, int flags, SceNetSocka
     const auto posix_flags = convertSceFlagsToPosix(sce_type, flags);
     if (from == nullptr) {
         res = recv(sock, (char *)buf, len, posix_flags);
+#ifndef _WIN32
+        while (res < 0 && errno == EINTR && !is_aborted)
+            res = recv(sock, (char *)buf, len, posix_flags);
+#endif
     } else {
         sockaddr addr{};
         socklen_t addrlen = sizeof(addr);
         res = recvfrom(sock, (char *)buf, len, posix_flags, &addr, (fromlen && *fromlen <= sizeof(addr) ? (socklen_t *)fromlen : &addrlen));
+#ifndef _WIN32
+        while (res < 0 && errno == EINTR && !is_aborted)
+            res = recvfrom(sock, (char *)buf, len, posix_flags, &addr, (fromlen && *fromlen <= sizeof(addr) ? (socklen_t *)fromlen : &addrlen));
+#endif
         if (res > 0)
             convertPosixSockaddrToSce(&addr, from);
     }
 
+    note_host_error("recv", res);
     if (abort_pending(is_aborted))
         return SCE_NET_ERROR_EINTR;
 
@@ -512,6 +569,10 @@ int PosixSocket::send_packet(const void *msg, unsigned int len, int flags, const
     const auto posix_flags = convertSceFlagsToPosix(sce_type, flags);
     if (to == nullptr) {
         res = send(sock, (const char *)msg, len, posix_flags);
+#ifndef _WIN32
+        while (res < 0 && errno == EINTR && !is_aborted)
+            res = send(sock, (const char *)msg, len, posix_flags);
+#endif
     } else {
         sockaddr addr{};
         convertSceSockaddrToPosix(to, &addr);

@@ -161,7 +161,19 @@ Java_org_vita3k_emulator_NativeLib_getSessionLogLevel(JNIEnv *, jclass) {
 
 JNIEXPORT jstring JNICALL
 Java_org_vita3k_emulator_NativeLib_getPkgjStatus(JNIEnv *env, jclass) {
-    return env->NewStringUTF(read_pkgj_status().c_str());
+    const auto text = read_pkgj_status();
+    // PKGj shows only a friendly message: keep its raw error text in the session log too
+    static std::string last_logged;
+    const auto pos = text.find("\nraw=");
+    if (pos != std::string::npos) {
+        const auto end = text.find('\n', pos + 1);
+        const auto raw = text.substr(pos + 5, end == std::string::npos ? std::string::npos : end - pos - 5);
+        if (!raw.empty() && raw != last_logged) {
+            last_logged = raw;
+            LOG_WARN("[PKGJ-STATUS] last download failure raw: {}", raw);
+        }
+    }
+    return env->NewStringUTF(text.c_str());
 }
 
 JNIEXPORT jint JNICALL

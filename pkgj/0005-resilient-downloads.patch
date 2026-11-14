@@ -1,5 +1,5 @@
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index ee8e396..3ef249c 100644
+index ee8e396..9ded40c 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
 @@ -10,6 +10,156 @@
@@ -175,7 +175,7 @@ index ee8e396..3ef249c 100644
      }
      _cond.notify_one();
  }
-@@ -106,15 +264,250 @@ void Downloader::remove_from_queue(Type type, const std::string& contentid)
+@@ -106,15 +264,251 @@ void Downloader::remove_from_queue(Type type, const std::string& contentid)
          contentid == _current_download.content)
          _cancel_current = true;
      else
@@ -346,7 +346,7 @@ index ee8e396..3ef249c 100644
 +    const uint64_t total = _download_size.load();
 +    const auto text = fmt::format(
 +            "v=1\nstate={}\nname={}\ntype={}\npercent={}\ndone={}\n"
-+            "total={}\nqueue={}\nattempt={}\nmax={}\nkind={}\nmsg={}\n",
++            "total={}\nqueue={}\nattempt={}\nmax={}\nkind={}\nmsg={}\nraw={}\n",
 +            state,
 +            one_line(cur.name),
 +            cur.content.empty() ? "" : type_to_string(cur.type),
@@ -357,7 +357,8 @@ index ee8e396..3ef249c 100644
 +            _attempt.load(),
 +            MAX_RETRIES,
 +            kind,
-+            one_line(msg));
++            one_line(msg),
++            one_line(_last_raw));
 +    try
 +    {
 +        pkgi_save(STATUS_FILE, text.data(), static_cast<uint32_t>(text.size()));
@@ -433,7 +434,7 @@ index ee8e396..3ef249c 100644
  }
  
  void Downloader::run()
-@@ -122,6 +515,8 @@ void Downloader::run()
+@@ -122,6 +516,8 @@ void Downloader::run()
      while (true)
      {
          DownloadItem item;
@@ -442,7 +443,7 @@ index ee8e396..3ef249c 100644
          {
              ScopeLock _(_cond.get_mutex());
  
-@@ -129,44 +524,108 @@ void Downloader::run()
+@@ -129,44 +525,109 @@ void Downloader::run()
              _cancel_current = false;
              _download_offset = 0;
              _download_size = 0;
@@ -485,6 +486,7 @@ index ee8e396..3ef249c 100644
 +                    if (_cancel_current || _dying)
 +                        break;
 +                    const auto info = classify_error(raw);
++                    _last_raw = raw;
 +                    LOG_ERR("Download failed (attempt %d): %s",
 +                            attempt + 1,
 +                            raw.c_str());
@@ -568,7 +570,7 @@ index ee8e396..3ef249c 100644
      }
  }
  
-@@ -186,6 +645,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+@@ -186,6 +647,7 @@ void Downloader::do_download_package(const DownloadItem& item)
      {
          _download_offset = download_offset;
          _download_size = download_size;
@@ -576,7 +578,7 @@ index ee8e396..3ef249c 100644
      };
      download->update_status = [](auto&&) {};
      download->is_canceled = [this] { return _cancel_current || _dying; };
-@@ -197,6 +657,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+@@ -197,6 +659,7 @@ void Downloader::do_download_package(const DownloadItem& item)
                  item.digest.empty() ? nullptr : item.digest.data()))
          return;
      LOG("[%s] Download complete: %s", type_to_string(item.type).c_str(), item.name.c_str());
@@ -584,7 +586,7 @@ index ee8e396..3ef249c 100644
      switch (item.type)
      {
      case Game:
-@@ -250,12 +711,14 @@ void Downloader::do_download_comppack(const DownloadItem& item)
+@@ -250,12 +713,14 @@ void Downloader::do_download_comppack(const DownloadItem& item)
      {
          _download_offset = download_offset;
          _download_size = download_size;
@@ -600,7 +602,7 @@ index ee8e396..3ef249c 100644
              item.content, item.type == CompPackPatch, item.version);
      pkgi_rm(fmt::format("{}pkgj/{}-comp.ppk", item.partition, item.content)
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index b81f0fc..5325769 100644
+index b81f0fc..62dba5a 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
 @@ -4,6 +4,7 @@
@@ -633,13 +635,14 @@ index b81f0fc..5325769 100644
  
      std::function<void(const std::string& content)> refresh;
      std::function<void(const std::string& error)> error;
-@@ -81,9 +90,29 @@ private:
+@@ -81,9 +90,30 @@ private:
      std::atomic<uint64_t> _download_offset = 0;
      std::atomic<uint64_t> _download_size = 0;
  
 +    std::vector<DownloadItem> _parked;
 +    std::string _status;
 +    std::atomic<int> _attempt{0};
++    std::string _last_raw; // raw exception text of the last failure, for the status file
 +    std::atomic<uint32_t> _last_status_ms{0};
 +    bool _ready = false;
 +
