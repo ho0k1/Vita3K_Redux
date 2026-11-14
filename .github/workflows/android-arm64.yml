@@ -2,12 +2,20 @@ name: Android arm64 (fast)
 
 on:
   push:
+    branches: ['**']
+    # a tag v* builds a signed release APK and publishes it as a GitHub Release (paths filters do not apply to tags)
+    tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '_readme/**'
       - 'pkgj/**'
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Signed release APK (needs the SIGNING_* secrets, see docs/RELEASE.md)'
+        type: boolean
+        default: false
 
 concurrency:
   group: android-${{ github.ref }}
@@ -18,6 +26,10 @@ jobs:
     name: Android arm64-v8a
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: write   # to attach the release APK to a GitHub Release
+    env:
+      IS_RELEASE: ${{ (github.event_name == 'workflow_dispatch' && inputs.release) || startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +73,29 @@ jobs:
           echo "ARTIFACT_NAME=vita3k-plus-pkgj-$(git rev-parse --short HEAD)-android-arm64" >> "$GITHUB_ENV"
           echo "ARTIFACT_DIR=artifacts/out" >> "$GITHUB_ENV"
 
+      - name: Prepare release signing
+        if: ${{ env.IS_RELEASE == 'true' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret SIGNING_* for $name is not set. See docs/RELEASE.md"
+              exit 1
+            fi
+          done
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          {
+            echo "SIGNING_STORE_PATH=$RUNNER_TEMP/release.keystore"
+            echo "SIGNING_STORE_PASSWORD=$STORE_PASSWORD"
+            echo "SIGNING_KEY_ALIAS=$KEY_ALIAS"
+            echo "SIGNING_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ARTIFACT_NAME=${ARTIFACT_NAME}-release"
+          } >> "$GITHUB_ENV"
+
       - name: Build APK (arm64-v8a only)
         env:
           VCPKG_ROOT: /usr/local/share/vcpkg
@@ -73,6 +108,15 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_DIR }}
+
+      - name: Publish GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "${{ env.ARTIFACT_DIR }}/app.apk" "Vita3K-PKGj-${GITHUB_REF_NAME}-arm64-v8a.apk"
+          gh release create "$GITHUB_REF_NAME" "Vita3K-PKGj-${GITHUB_REF_NAME}-arm64-v8a.apk" \
+            --title "$GITHUB_REF_NAME" --generate-notes
 
       # the unstripped library lets crash frames like libVita3K.so+0x17BAD98 be resolved with addr2line
       - name: Collect native symbols

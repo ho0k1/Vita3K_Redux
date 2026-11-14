@@ -1,0 +1,29 @@
+# Release-APK с подписью из GitHub Secrets
+
+Release-сборка отличается от обычной (`Reldebug`): включена минификация, package id без суффикса `.debug`, подпись вашим ключом. Ключ не хранится в репозитории, он лежит только в GitHub Secrets.
+
+## 1. Создать ключ (один раз)
+```
+keytool -genkeypair -v -keystore release.keystore -alias vita3k -keyalg RSA -keysize 2048 -validity 36500
+```
+Запомните оба пароля (хранилища и ключа). **Сохраните `release.keystore` в надёжном месте.** Потеряете ключ, и новые версии не поставятся поверх старых. Никогда не коммитьте его.
+
+## 2. Добавить секреты
+Repo → Settings → Secrets and variables → Actions → New repository secret:
+
+| Секрет | Значение |
+|---|---|
+| `SIGNING_KEYSTORE_BASE64` | вывод `base64 -w0 release.keystore` |
+| `SIGNING_STORE_PASSWORD` | пароль хранилища |
+| `SIGNING_KEY_ALIAS` | `vita3k` (alias из шага 1) |
+| `SIGNING_KEY_PASSWORD` | пароль ключа |
+
+## 3. Запустить сборку
+- **Вручную:** Actions → «Android arm64 (fast)» → Run workflow → галочка `release`. APK появится в артефактах (`…-release`).
+- **Тегом:** `git tag v1.0 && git push origin v1.0`. Сборка создаст GitHub Release с файлом `Vita3K-PKGj-v1.0-arm64-v8a.apk`.
+
+Если секрет не задан, шаг подписи остановит сборку с понятной ошибкой.
+
+## Предупреждения
+- Другой package id и другой ключ: release ставится **рядом** с debug-сборкой, данные и настройки у неё отдельные.
+- R8-минификация не проверялась на устройстве. Если приложение падает на старте, смотрите лог и добавьте правила в `proguard-rules.pro` (JNI-классы и методы `NativeLib`).
