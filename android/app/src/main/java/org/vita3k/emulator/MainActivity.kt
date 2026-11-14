@@ -2,6 +2,9 @@ package org.vita3k.emulator
 
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +18,9 @@ import org.vita3k.emulator.ui.viewmodel.AppsListViewModel
 import org.vita3k.emulator.ui.viewmodel.InstallViewModel
 import org.vita3k.emulator.ui.viewmodel.SettingsViewModel
 import org.vita3k.emulator.ui.viewmodel.UserManagementViewModel
+
+// the saved PKGj queue is resumed once per process, not on every rotation or re-creation
+private var pkgjResumeChecked = false
 
 class MainActivity : AppCompatActivity() {
     private val appsListViewModel: AppsListViewModel by viewModels()
@@ -109,6 +115,12 @@ class MainActivity : AppCompatActivity() {
         val storagePath = AppStorage.storageRootPath(this)
         appsListViewModel.initialize(storagePath)
 
+        // unfinished PKGj downloads (saved queue) continue by themselves when the app is opened
+        if (savedInstanceState == null && !pkgjResumeChecked && intent?.action == Intent.ACTION_MAIN) {
+            pkgjResumeChecked = true
+            Handler(Looper.getMainLooper()).postDelayed({ resumePkgjQueueIfAny() }, 1500)
+        }
+
         setContent {
             Vita3KTheme {
                 AppNavigation(
@@ -190,6 +202,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         folderPermissionLauncher.launch(StorageAccess.missingStoragePermissions(this))
+    }
+
+    private fun resumePkgjQueueIfAny() {
+        if (isFinishing || isDestroyed) return
+        if (runCatching { NativeLib.isAppRunning() }.getOrDefault(false)) return
+        val count = runCatching { NativeLib.getPkgjSavedQueueCount() }.getOrDefault(0)
+        if (count <= 0) return
+        Toast.makeText(this, getString(R.string.pkgj_resume_toast, count), Toast.LENGTH_LONG).show()
+        launchApp("PKGJ00000", "PKGj")
     }
 
     private fun launchApp(titleId: String, appTitle: String) {

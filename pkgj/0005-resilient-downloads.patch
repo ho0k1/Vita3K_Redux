@@ -1,8 +1,8 @@
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index ee8e396..0a0d752 100644
+index ee8e396..3ef249c 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
-@@ -10,6 +10,155 @@
+@@ -10,6 +10,156 @@
  
  #include <boost/scope_exit.hpp>
  
@@ -14,6 +14,7 @@ index ee8e396..0a0d752 100644
 +constexpr int MAX_RETRIES = 5;
 +constexpr const char* QUEUE_FILE = "ux0:pkgj/queue.txt";
 +constexpr const char* STATUS_FILE = "ux0:pkgj/status.txt";
++constexpr const char* CANCEL_FILE = "ux0:pkgj/cancel.req";
 +
 +struct ErrorInfo
 +{
@@ -158,7 +159,7 @@ index ee8e396..0a0d752 100644
  std::string type_to_string(Type type)
  {
      switch (type)
-@@ -56,7 +205,15 @@ void Downloader::add(const DownloadItem& d)
+@@ -56,7 +206,15 @@ void Downloader::add(const DownloadItem& d)
      LOG("Queued download: %s", d.name.c_str());
      {
          ScopeLock _(_cond.get_mutex());
@@ -174,7 +175,7 @@ index ee8e396..0a0d752 100644
      }
      _cond.notify_one();
  }
-@@ -106,15 +263,218 @@ void Downloader::remove_from_queue(Type type, const std::string& contentid)
+@@ -106,15 +264,250 @@ void Downloader::remove_from_queue(Type type, const std::string& contentid)
          contentid == _current_download.content)
          _cancel_current = true;
      else
@@ -311,6 +312,14 @@ index ee8e396..0a0d752 100644
 +        LOG("Cannot restore the download queue: %s", e.what());
 +    }
 +
++    try
++    {
++        if (pkgi_file_exists(CANCEL_FILE))
++            pkgi_rm(CANCEL_FILE);
++    }
++    catch (const std::exception&)
++    {
++    }
 +    {
 +        ScopeLock _(_cond.get_mutex());
 +        for (auto& d : restored)
@@ -358,12 +367,34 @@ index ee8e396..0a0d752 100644
 +    }
 +}
 +
++bool Downloader::check_cancel_request()
++{
++    if (!pkgi_file_exists(CANCEL_FILE))
++        return false;
++    try
++    {
++        pkgi_rm(CANCEL_FILE);
++    }
++    catch (const std::exception&)
++    {
++    }
++    LOG("Cancel requested from the notification");
++    ScopeLock _(_cond.get_mutex());
++    _queue.clear();
++    _parked.clear();
++    _cancel_current = true;
++    save_queue_locked();
++    return true;
++}
++
 +void Downloader::maybe_write_status()
 +{
 +    const uint32_t now = pkgi_time_msec();
 +    if (now - _last_status_ms.load() < 2000)
 +        return;
 +    _last_status_ms = now;
++    if (check_cancel_request())
++        return;
 +    write_status("downloading");
 +}
 +
@@ -389,6 +420,8 @@ index ee8e396..0a0d752 100644
 +            return false;
 +        pkgi_sleep(250);
 +        waited += 250;
++        if (waited % 1000 == 0 && check_cancel_request())
++            return false;
 +        if (waited % 2000 == 0)
 +            write_status("retrying", text, "network");
 +    }
@@ -400,7 +433,16 @@ index ee8e396..0a0d752 100644
  }
  
  void Downloader::run()
-@@ -129,44 +489,108 @@ void Downloader::run()
+@@ -122,6 +515,8 @@ void Downloader::run()
+     while (true)
+     {
+         DownloadItem item;
++        if (_ready)
++            check_cancel_request();
+         {
+             ScopeLock _(_cond.get_mutex());
+ 
+@@ -129,44 +524,108 @@ void Downloader::run()
              _cancel_current = false;
              _download_offset = 0;
              _download_size = 0;
@@ -526,7 +568,7 @@ index ee8e396..0a0d752 100644
      }
  }
  
-@@ -186,6 +610,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+@@ -186,6 +645,7 @@ void Downloader::do_download_package(const DownloadItem& item)
      {
          _download_offset = download_offset;
          _download_size = download_size;
@@ -534,7 +576,7 @@ index ee8e396..0a0d752 100644
      };
      download->update_status = [](auto&&) {};
      download->is_canceled = [this] { return _cancel_current || _dying; };
-@@ -197,6 +622,7 @@ void Downloader::do_download_package(const DownloadItem& item)
+@@ -197,6 +657,7 @@ void Downloader::do_download_package(const DownloadItem& item)
                  item.digest.empty() ? nullptr : item.digest.data()))
          return;
      LOG("[%s] Download complete: %s", type_to_string(item.type).c_str(), item.name.c_str());
@@ -542,7 +584,7 @@ index ee8e396..0a0d752 100644
      switch (item.type)
      {
      case Game:
-@@ -250,12 +676,14 @@ void Downloader::do_download_comppack(const DownloadItem& item)
+@@ -250,12 +711,14 @@ void Downloader::do_download_comppack(const DownloadItem& item)
      {
          _download_offset = download_offset;
          _download_size = download_size;
@@ -558,7 +600,7 @@ index ee8e396..0a0d752 100644
              item.content, item.type == CompPackPatch, item.version);
      pkgi_rm(fmt::format("{}pkgj/{}-comp.ppk", item.partition, item.content)
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index b81f0fc..922e56e 100644
+index b81f0fc..5325769 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
 @@ -4,6 +4,7 @@
@@ -591,7 +633,7 @@ index b81f0fc..922e56e 100644
  
      std::function<void(const std::string& content)> refresh;
      std::function<void(const std::string& error)> error;
-@@ -81,9 +90,27 @@ private:
+@@ -81,9 +90,29 @@ private:
      std::atomic<uint64_t> _download_offset = 0;
      std::atomic<uint64_t> _download_size = 0;
  
@@ -605,6 +647,8 @@ index b81f0fc..922e56e 100644
      bool _dying = false;
  
 +    void save_queue_locked();
++    // the Android notification asks for a cancel through ux0:pkgj/cancel.req
++    bool check_cancel_request();
 +    void write_status(
 +            const char* state,
 +            const std::string& msg = std::string(),

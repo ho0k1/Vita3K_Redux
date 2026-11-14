@@ -47,6 +47,12 @@ class DownloadKeepAliveService : Service() {
             finish(showDone = false)
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_CANCEL) {
+            cancelRequested = true
+            runCatching { NativeLib.requestPkgjCancel() }
+            if (running) notifyOngoing(getString(R.string.pkgj_bg_cancelling))
+            return START_NOT_STICKY
+        }
         if (running) {
             return START_NOT_STICKY
         }
@@ -56,6 +62,7 @@ class DownloadKeepAliveService : Service() {
         acquireLocks()
         startBytes = safeBytes()
         lastDataMs = 0L
+        cancelRequested = false
         lastStatus = null
         speedAvg = 0.0
         notificationTitle = null
@@ -91,6 +98,7 @@ class DownloadKeepAliveService : Service() {
     }
 
     private var lastDataMs = 0L
+    private var cancelRequested = false
     private var lastStatus: PkgjStatus? = null
     private var speedAvg = 0.0
 
@@ -108,7 +116,7 @@ class DownloadKeepAliveService : Service() {
             if (!active) {
                 // nothing left to do: pause like a normal backgrounded app
                 pauseEmulation()
-                finish(showDone = sawData || lastStatus?.state == "error")
+                finish(showDone = !cancelRequested && (sawData || lastStatus?.state == "error"))
                 return
             }
 
@@ -124,7 +132,7 @@ class DownloadKeepAliveService : Service() {
             }
             lastBytes = bytes
             lastTimeMs = now
-            notifyOngoing(buildText(status, now))
+            notifyOngoing(if (cancelRequested) getString(R.string.pkgj_bg_cancelling) else buildText(status, now))
             handler.postDelayed(this, POLL_MS)
         }
     }
@@ -250,6 +258,16 @@ class DownloadKeepAliveService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         )
+        .addAction(
+            0,
+            getString(R.string.pkgj_bg_cancel),
+            PendingIntent.getService(
+                this,
+                2,
+                Intent(this, DownloadKeepAliveService::class.java).setAction(ACTION_CANCEL),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        )
         .build()
 
     private fun notifyOngoing(text: String) {
@@ -306,6 +324,7 @@ class DownloadKeepAliveService : Service() {
         private const val NOTIFICATION_ID = 0x318
         private const val DONE_NOTIFICATION_ID = 0x319
         private const val ACTION_STOP_AND_PAUSE = "org.vita3k.emulator.action.PKGJ_BG_PAUSE"
+        private const val ACTION_CANCEL = "org.vita3k.emulator.action.PKGJ_BG_CANCEL"
         private const val POLL_MS = 2000L
         private const val WAKE_LOCK_TIMEOUT_MS = 6L * 60L * 60L * 1000L
 

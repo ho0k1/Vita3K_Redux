@@ -781,6 +781,9 @@
     <string name="pkgj_bg_working">Installing / waiting… received %1$s MB</string>
     <string name="pkgj_bg_done">Finished. Received %1$s MB. Tap to open.</string>
     <string name="pkgj_bg_pause">Pause</string>
+    <string name="pkgj_bg_cancel">Cancel</string>
+    <string name="pkgj_bg_cancelling">Cancelling downloads…</string>
+    <string name="pkgj_resume_toast">Continuing %1$d unfinished PKGj downloads…</string>
     <string name="pkgj_bg_progress2">%1$d%% · %2$s MB/s</string>
     <string name="pkgj_bg_queue"> · %1$d more in queue</string>
     <string name="pkgj_bg_retry">Retry %1$d/%2$d: %3$s</string>

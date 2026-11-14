@@ -44,6 +44,13 @@ std::string read_pkgj_status() {
     return ss.str();
 }
 
+std::filesystem::path pkgj_dir() {
+    auto *emuenv = get_emuenv();
+    if (!emuenv)
+        return {};
+    return std::filesystem::path((emuenv->vita_fs_path / "ux0" / "pkgj").string());
+}
+
 // downloading / retrying must keep reporting; install phases may be silent for a long time
 bool pkgj_reports_busy() {
     const auto text = read_pkgj_status();
@@ -159,6 +166,31 @@ Java_org_vita3k_emulator_NativeLib_getPkgjStatus(JNIEnv *env, jclass) {
 JNIEXPORT jint JNICALL
 Java_org_vita3k_emulator_NativeLib_getAppsChangedCounter(JNIEnv *, jclass) {
     return static_cast<jint>(background_activity::apps_changed.load(std::memory_order_relaxed));
+}
+
+// the notification asks PKGj to cancel everything: it polls ux0:pkgj/cancel.req
+JNIEXPORT void JNICALL
+Java_org_vita3k_emulator_NativeLib_requestPkgjCancel(JNIEnv *, jclass) {
+    const auto dir = pkgj_dir();
+    if (dir.empty())
+        return;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    std::ofstream(dir / "cancel.req") << "cancel\n";
+}
+
+// number of downloads PKGj saved in ux0:pkgj/queue.txt (running, queued, interrupted by the network)
+JNIEXPORT jint JNICALL
+Java_org_vita3k_emulator_NativeLib_getPkgjSavedQueueCount(JNIEnv *, jclass) {
+    const auto dir = pkgj_dir();
+    if (dir.empty())
+        return 0;
+    std::ifstream in(dir / "queue.txt");
+    int count = 0;
+    for (std::string line; std::getline(in, line);)
+        if (!line.empty())
+            ++count;
+    return count;
 }
 
 // total bytes received by the guest from the network since the process started

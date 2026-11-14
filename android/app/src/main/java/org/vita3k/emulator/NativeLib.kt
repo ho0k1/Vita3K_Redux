@@ -142,6 +142,10 @@ object NativeLib {
     external fun isBackgroundWorkActive(): Boolean
     /** Text of PKGj's status file (key=value lines: state, name, percent, done, total, queue, attempt, max, kind, msg, age). Empty if none. */
     external fun getPkgjStatus(): String
+    /** Asks PKGj to cancel the running download and empty its queue. */
+    external fun requestPkgjCancel()
+    /** Number of downloads PKGj saved for the next start. */
+    external fun getPkgjSavedQueueCount(): Int
     /** Grows each time PKGj installed something: the apps list must be reloaded. */
     external fun getAppsChangedCounter(): Int
     /** Bytes received by the guest from the network since the process started. */
