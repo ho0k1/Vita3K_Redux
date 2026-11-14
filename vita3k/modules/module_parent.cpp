@@ -168,7 +168,11 @@ void call_import(EmuEnvState &emuenv, CPUState &cpu, uint32_t nid, SceUID thread
     if (fn) {
         (*fn)(emuenv, cpu, thread_id);
         const uint32_t result = read_reg(cpu, 0);
-        if (session_diag::note_call(nid, result))
+        // these return guest pointers (stack/heap below 0x81000000 look like 0x80xxxxxx), not error codes
+        uint32_t counted = result;
+        if ((result >> 24) == 0x80 && session_diag::returns_pointer(import_name(nid)))
+            counted = 0;
+        if (session_diag::note_call(nid, counted))
             LOG_WARN("[HLE-ERROR] {} returned 0x{:08X} (thread {}, LR {}) - first error of this function in this session",
                 import_name(nid), result, thread_id, log_hex(read_lr(cpu)));
     } else {

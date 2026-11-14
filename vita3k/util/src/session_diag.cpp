@@ -1,4 +1,5 @@
 // Vita3K emulator project - fork addition
+#include <cstring>
 #include <util/session_diag.h>
 
 #include <util/log.h>
@@ -67,6 +68,18 @@ bool note_call(uint32_t nid, uint32_t ret) {
     g_total_errors.fetch_add(1, std::memory_order_relaxed);
     slot->last_error.store(ret, std::memory_order_relaxed);
     return slot->errors.fetch_add(1, std::memory_order_relaxed) == 0;
+}
+
+bool returns_pointer(const char *name) {
+    if (!name)
+        return false;
+    static const char *const prefixes[] = { "sceClibMem", "sceClibStr", "sceClibMspace", "sceClibPrintf", "sceClibVsnprintf",
+        "sceClibSnprintf", "kmem", "sceKernelGetTLSAddr", "sceNetErrnoLoc", "sceSysclib", "memcpy", "memset", "memmove", "strn", "strc", "strl" };
+    for (const char *prefix : prefixes) {
+        if (std::strncmp(name, prefix, std::strlen(prefix)) == 0)
+            return true;
+    }
+    return false;
 }
 
 uint64_t total_calls() {

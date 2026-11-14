@@ -13,6 +13,8 @@ namespace session_diag {
 
 // Returns true the first time this NID returned an error-like value (0x80xxxxxx, e.g. 0x80010002) in this session.
 bool note_call(uint32_t nid, uint32_t ret);
+// functions whose result is a pointer or a length, never an SCE error code (memcpy, strlen, TLS address ...)
+bool returns_pointer(const char *name);
 
 // A UNIMPLEMENTED()/STUBBED() call site; lives for the whole process (function-local static).
 struct StubSite {
