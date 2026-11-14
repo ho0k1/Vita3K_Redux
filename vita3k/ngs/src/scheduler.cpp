@@ -299,6 +299,9 @@ void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID threa
 
         switch (op.type) {
         case PendingType::ReleaseRack: {
+            // already released through another path (see release_rack)
+            if (std::find(op.system->racks.begin(), op.system->racks.end(), op.release_data.rack) == op.system->racks.end())
+                break;
             const SceNgsCallbackInfo info = op.release_data.rack->release_callback_info(mem);
             release_rack(*op.release_data.state, mem, op.system, op.release_data.rack);
             if (op.release_data.callback) {

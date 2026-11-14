@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <algorithm>
 #include <cpu/functions.h>
 #include <kernel/state.h>
 
@@ -494,6 +495,13 @@ void release_rack(State &ngs, MemState &mem, System *system, Rack *rack) {
     // this function should only be called outside of ngs update and with the scheduler mutex acquired (except when releasing the system)
     if (!rack)
         return;
+
+    // the same rack can be released twice (a deferred release from a callback and a direct one from another
+    // thread): destroying it again frees its voices twice and aborts
+    if (std::find(system->racks.begin(), system->racks.end(), rack) == system->racks.end()) {
+        LOG_WARN("[NGSLIFE] release_rack {} ignored: rack already released", fmt::ptr(rack));
+        return;
+    }
 
     // patches of other racks point at voices about to be destroyed
     for (Rack *source_rack : system->racks) {
