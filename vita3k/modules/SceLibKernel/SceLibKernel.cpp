@@ -545,7 +545,7 @@ EXPORT(int, sceIoDevctl, const char *dev, SceInt cmd, const void *indata, SceSiz
 
         ((SceIoDevInfo *)outdata)->max_size = space.capacity;
         ((SceIoDevInfo *)outdata)->free_size = space.available;
-        STUBBED("cluster size = 4096");
+        // the real cluster size of the host file system is not exposed, 4096 is what games expect
         ((SceIoDevInfo *)outdata)->cluster_size = 4096;
         break;
     }
