@@ -384,9 +384,9 @@ static void log_tick(uint64_t &last_calls, std::chrono::steady_clock::time_point
     }
     const uint64_t calls = session_diag::total_calls();
     const double seconds = std::max(0.001, std::chrono::duration<double>(now - last_time).count());
-    LOG_INFO("[TICK] t=+{}s rss={}MB threads={} load={} mem_avail={}MB max_temp={}C hle_calls={} ({}/s) hle_errors={}",
+    LOG_INFO("[TICK] t=+{}s rss={}MB threads={} load={} mem_avail={}MB max_temp={}C thermal={} hle_calls={} ({}/s) hle_errors={}",
         std::chrono::duration_cast<std::chrono::seconds>(now - start).count(), rss_kb / 1024, threads, load, avail_kb / 1024,
-        max_temp < 0 ? -1.0 : (max_temp > 1000 ? max_temp / 1000.0 : static_cast<double>(max_temp)), calls,
+        max_temp < 0 ? -1.0 : (max_temp > 1000 ? max_temp / 1000.0 : static_cast<double>(max_temp)), session_diag::thermal_status(), calls,
         static_cast<uint64_t>((calls - last_calls) / seconds), session_diag::total_errors());
     last_calls = calls;
     last_time = now;

@@ -15,6 +15,9 @@ namespace session_diag {
 bool note_call(uint32_t nid, uint32_t ret);
 // functions whose result is a pointer or a length, never an SCE error code (memcpy, strlen, TLS address ...)
 bool returns_pointer(const char *name);
+// Android thermal status (0 none ... 6 shutdown), -1 unknown
+void set_thermal_status(int status);
+int thermal_status();
 
 // A UNIMPLEMENTED()/STUBBED() call site; lives for the whole process (function-local static).
 struct StubSite {

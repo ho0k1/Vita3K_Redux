@@ -13,6 +13,7 @@
 #include <io/state.h>
 #include <util/background_activity.h>
 #include <util/log.h>
+#include <util/session_diag.h>
 #include <motion/functions.h>
 
 #include <SDL3/SDL_events.h>
@@ -191,6 +192,19 @@ Java_org_vita3k_emulator_NativeLib_getPkgjSavedQueueCount(JNIEnv *, jclass) {
         if (!line.empty())
             ++count;
     return count;
+}
+
+// 0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown (PowerManager.THERMAL_STATUS_*)
+JNIEXPORT void JNICALL
+Java_org_vita3k_emulator_NativeLib_reportThermalStatus(JNIEnv *, jclass, jint status) {
+    const int previous = session_diag::thermal_status();
+    session_diag::set_thermal_status(static_cast<int>(status));
+    if (previous == status)
+        return;
+    if (status >= 3)
+        LOG_WARN("[THERMAL] status {} -> {}: the system is throttling the CPU/GPU, expect slowdowns", previous, static_cast<int>(status));
+    else
+        LOG_INFO("[THERMAL] status {} -> {}", previous, static_cast<int>(status));
 }
 
 // total bytes received by the guest from the network since the process started

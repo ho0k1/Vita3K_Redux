@@ -142,6 +142,8 @@ object NativeLib {
     external fun isBackgroundWorkActive(): Boolean
     /** Text of PKGj's status file (key=value lines: state, name, percent, done, total, queue, attempt, max, kind, msg, age). Empty if none. */
     external fun getPkgjStatus(): String
+    /** PowerManager thermal status (0 none ... 6 shutdown), written to the logs. */
+    external fun reportThermalStatus(status: Int)
     /** Asks PKGj to cancel the running download and empty its queue. */
     external fun requestPkgjCancel()
     /** Number of downloads PKGj saved for the next start. */

@@ -801,4 +801,18 @@
     <string name="settings_debug_session_detail">Session log detail</string>
     <string name="settings_debug_session_detail_same">Same as log level</string>
     <string name="settings_debug_session_detail_desc">How detailed the per-session files are (emulator, app, PKGj). They always contain at least Info. Trace and Debug make them much larger and slow the emulation down, use them only to find a problem.</string>
+    <string name="settings_profile_title">Performance profile</string>
+    <string name="settings_profile_custom">Custom</string>
+    <string name="settings_profile_balanced">Balanced</string>
+    <string name="settings_profile_performance">Performance</string>
+    <string name="settings_profile_quality">Quality</string>
+    <string name="settings_profile_battery">Battery saver</string>
+    <string name="settings_profile_desc">Sets resolution, filtering, V-Sync, pipeline compilation, thread scheduling, accuracy and guest cores in one step. These are starting points for a fast phone such as Galaxy S22+. Balanced: default quality, no shader stutter. Performance: fastest, less exact timing. Quality: 2x resolution, 4x anisotropic filtering, FSR on Vulkan. Battery saver: fewer cores and relaxed timing. Changing any of these settings by hand switches the profile to Custom.</string>
+    <string name="settings_bgdl_section">Background downloads</string>
+    <string name="settings_bgdl_battery_ok">Battery: unrestricted, downloads keep running with the screen off</string>
+    <string name="settings_bgdl_battery_limited">Battery: optimized, the system may stop a long download in the background</string>
+    <string name="settings_bgdl_battery_button">Allow unrestricted battery use</string>
+    <string name="settings_bgdl_notif_ok">Notifications: allowed</string>
+    <string name="settings_bgdl_notif_off">Notifications: off, you will not see the progress and the Cancel button</string>
+    <string name="settings_bgdl_notif_button">Open notification settings</string>
 </resources>

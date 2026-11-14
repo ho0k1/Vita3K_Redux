@@ -252,7 +252,9 @@ internal fun SettingsCategoryBody(
         )
 
         SettingsCategory.Cpu -> CpuSettingsSection(cfg = cfg, onUpdate = onUpdate, onShowHelp = onShowHelp)
-        SettingsCategory.Gpu -> GpuSettingsSection(
+        SettingsCategory.Gpu -> {
+        PerformanceProfileSection(cfg = cfg, onUpdate = onUpdate, onShowHelp = onShowHelp)
+        GpuSettingsSection(
             cfg = cfg,
             isPerApp = isPerApp,
             supportedMemoryMappingMask = supportedMemoryMappingMask,
@@ -269,6 +271,7 @@ internal fun SettingsCategoryBody(
             onUpdate = onUpdate,
             onShowHelp = onShowHelp
         )
+        }
 
         SettingsCategory.Audio -> AudioSettingsSection(cfg = cfg, onUpdate = onUpdate, onShowHelp = onShowHelp)
         SettingsCategory.Camera -> CameraSettingsSection(
@@ -1459,6 +1462,90 @@ private fun NetworkSettingsSection(
 }
 
 @Composable
+private fun PerformanceProfileSection(
+    cfg: EmulatorConfig,
+    onUpdate: (EmulatorConfig.() -> Unit) -> Unit,
+    onShowHelp: (SettingsHelpEntry) -> Unit
+) {
+    val title = stringResource(R.string.settings_profile_title)
+    val profiles = org.vita3k.emulator.data.PerformanceProfile.entries
+    val labels = listOf(
+        stringResource(R.string.settings_profile_custom),
+        stringResource(R.string.settings_profile_balanced),
+        stringResource(R.string.settings_profile_performance),
+        stringResource(R.string.settings_profile_quality),
+        stringResource(R.string.settings_profile_battery)
+    )
+    val current = org.vita3k.emulator.data.PerformanceProfile.current(cfg)
+    SettingsSectionCard(title = title, summary = null, help = null, onShowHelp = onShowHelp) {
+        SettingsChoiceField(
+            title = title,
+            options = labels,
+            selectedIndex = if (current == null) 0 else current.ordinal + 1,
+            onSelect = { index ->
+                if (index > 0) {
+                    val profile = profiles[index - 1]
+                    onUpdate { profile.applyTo(this) }
+                }
+            },
+            help = helpEntry(title, stringResource(R.string.settings_profile_desc)),
+            onShowHelp = onShowHelp
+        )
+    }
+}
+
+@Composable
+private fun BackgroundDownloadsSection(onShowHelp: (SettingsHelpEntry) -> Unit) {
+    val context = LocalContext.current
+    fun batteryOk(): Boolean = runCatching {
+        (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(context.packageName)
+    }.getOrDefault(true)
+    fun notificationsOk(): Boolean = runCatching {
+        androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }.getOrDefault(true)
+
+    var battery by remember { mutableStateOf(batteryOk()) }
+    var notifications by remember { mutableStateOf(notificationsOk()) }
+    // the state changes in the system settings screens: read it again when we come back
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                battery = batteryOk()
+                notifications = notificationsOk()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    SettingsSectionCard(title = stringResource(R.string.settings_bgdl_section), summary = null, help = null, onShowHelp = onShowHelp) {
+        SettingsNote(text = stringResource(if (battery) R.string.settings_bgdl_battery_ok else R.string.settings_bgdl_battery_limited))
+        if (!battery) {
+            FilledTonalButton(onClick = {
+                val request = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(android.net.Uri.parse("package:${context.packageName}"))
+                try {
+                    context.startActivity(request)
+                } catch (_: ActivityNotFoundException) {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            }) { Text(stringResource(R.string.settings_bgdl_battery_button)) }
+        }
+        SettingsNote(text = stringResource(if (notifications) R.string.settings_bgdl_notif_ok else R.string.settings_bgdl_notif_off))
+        if (!notifications) {
+            FilledTonalButton(onClick = {
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                )
+            }) { Text(stringResource(R.string.settings_bgdl_notif_button)) }
+        }
+    }
+}
+
+@Composable
 private fun LogExportSection(onShowHelp: (SettingsHelpEntry) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1660,6 +1747,8 @@ private fun EmulatorSettingsSection(
     onUpdate: (EmulatorConfig.() -> Unit) -> Unit,
     onShowHelp: (SettingsHelpEntry) -> Unit
 ) {
+    BackgroundDownloadsSection(onShowHelp = onShowHelp)
+
     SettingsSectionCard(title = stringResource(R.string.settings_emulator_behavior), summary = null, help = null, onShowHelp = onShowHelp) {
         SettingsToggleRow(
             title = stringResource(R.string.settings_emulator_texture_cache),

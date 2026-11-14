@@ -70,6 +70,14 @@ bool note_call(uint32_t nid, uint32_t ret) {
     return slot->errors.fetch_add(1, std::memory_order_relaxed) == 0;
 }
 
+static std::atomic<int> g_thermal_status{ -1 };
+void set_thermal_status(int status) {
+    g_thermal_status.store(status, std::memory_order_relaxed);
+}
+int thermal_status() {
+    return g_thermal_status.load(std::memory_order_relaxed);
+}
+
 bool returns_pointer(const char *name) {
     if (!name)
         return false;

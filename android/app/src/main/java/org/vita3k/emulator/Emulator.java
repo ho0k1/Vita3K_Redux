@@ -256,6 +256,7 @@ public class Emulator extends SDLActivity
 
     // PKGj can keep downloading in the background and shows its progress in a notification
     private void maybeRequestNotificationPermission() {
+        ThermalMonitor.start(this);
         if (Build.VERSION.SDK_INT < 33 || notificationPermissionAsked)
             return;
         if (!"PKGJ00000".equals(resolveCurrentTitleId(getIntent())))
