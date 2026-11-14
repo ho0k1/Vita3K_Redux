@@ -381,6 +381,7 @@ EXPORT(SceInt32, sceNgsRackRelease, ngs::Rack *rack, Ptr<void> callback) {
         op.release_data.state = &emuenv.ngs;
         op.release_data.rack = rack;
         op.release_data.callback = 0;
+        op.release_data.guard = ngs::rack_guard(rack);
         rack->system->voice_scheduler.operations_pending.push(op);
     } else if (!rack->system->voice_scheduler.is_updating && !callback) {
         ngs::release_rack(emuenv.ngs, emuenv.mem, rack->system, rack);

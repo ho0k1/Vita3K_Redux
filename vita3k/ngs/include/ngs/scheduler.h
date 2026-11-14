@@ -54,6 +54,8 @@ struct OperationPending {
             Rack *rack;
             // can't use a ptr, otherwise the default constructor is deleted
             Address callback;
+            // hash of the Rack object when the release was requested (see ngs::rack_guard)
+            uint64_t guard;
         } release_data;
         // VoiceFinished: a keyed-off voice whose finished callback is due at the next update
         struct {

@@ -490,6 +490,25 @@ bool init_rack(State &ngs, MemState &mem, System *system, SceNgsBufferInfo *init
     return true;
 }
 
+uint64_t rack_guard(const Rack *rack) {
+    const auto *bytes = reinterpret_cast<const uint8_t *>(rack);
+    uint64_t hash = 1469598103934665603ull;
+    for (size_t i = 0; i < sizeof(Rack); i++)
+        hash = (hash ^ bytes[i]) * 1099511628211ull;
+    return hash;
+}
+
+bool rack_looks_intact(const MemState &mem, const System *system, const Rack *rack) {
+    if (rack->system != system || rack->voices.size() > 4096 || rack->modules.size() > 64)
+        return false;
+    for (const auto &handle : rack->voices) {
+        const Voice *v = handle.get(mem);
+        if (!v || v->rack != rack || !v->voice_mutex || v->datas.size() != rack->modules.size())
+            return false;
+    }
+    return true;
+}
+
 void release_rack(State &ngs, MemState &mem, System *system, Rack *rack, bool detach_only) {
     LOG_DEBUG("[NGSLIFE] release_rack {} ({} voices)", fmt::ptr(rack), rack ? rack->voices.size() : 0);
     // this function should only be called outside of ngs update and with the scheduler mutex acquired (except when releasing the system)

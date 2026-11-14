@@ -362,6 +362,10 @@ bool init_rack(State &ngs, MemState &mem, System *system, SceNgsBufferInfo *init
 // detach_only: just take the rack out of the scheduler and the system without running destructors or freeing
 // anything (used for a release requested from a callback inside sceNgsSystemUpdate: destroying the rack there
 // aborted in the allocator; a few leaked bytes of a finished BGM rack are harmless)
+// hash of the bytes of the Rack object: the game owns that memory and may reuse it as soon as sceNgsRackRelease returned
+uint64_t rack_guard(const Rack *rack);
+// the rack and its voices still look like valid objects (not overwritten by the game)
+bool rack_looks_intact(const MemState &mem, const System *system, const Rack *rack);
 void release_rack(State &ngs, MemState &mem, System *system, Rack *rack, bool detach_only = false);
 void invoke_callback(KernelState &kernel, const MemState &mem, const SceUID thread_id, Ptr<void> callback, const SceNgsCallbackInfo &info);
 

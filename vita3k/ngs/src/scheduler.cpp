@@ -303,7 +303,17 @@ void VoiceScheduler::update(KernelState &kern, MemState &mem, const SceUID threa
             if (std::find(op.system->racks.begin(), op.system->racks.end(), op.release_data.rack) == op.system->racks.end())
                 break;
             const SceNgsCallbackInfo info = op.release_data.rack->release_callback_info(mem);
-            release_rack(*op.release_data.state, mem, op.system, op.release_data.rack, /*detach_only=*/op.release_data.callback == 0);
+            bool detach = op.release_data.callback == 0;
+            if (detach) {
+                // the game gets the memory of the rack back as soon as sceNgsRackRelease returned: destroy the host objects
+                // in it only if it was not touched since, otherwise they are garbage and freeing them aborts
+                const bool unchanged = ngs::rack_guard(op.release_data.rack) == op.release_data.guard;
+                const bool intact = unchanged && ngs::rack_looks_intact(mem, op.system, op.release_data.rack);
+                LOG_INFO("[NGSLIFE] deferred release of rack {}: memory unchanged={} intact={} -> {}", fmt::ptr(op.release_data.rack), unchanged, intact,
+                    intact ? "destroying" : "detaching only");
+                detach = !intact;
+            }
+            release_rack(*op.release_data.state, mem, op.system, op.release_data.rack, detach);
             if (op.release_data.callback) {
                 scheduler_lock.unlock();
                 ngs::invoke_callback(kern, mem, thread_id, Ptr<void>(op.release_data.callback), info);
