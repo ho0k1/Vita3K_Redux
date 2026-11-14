@@ -370,6 +370,8 @@ EXPORT(SceInt32, sceNgsRackRelease, ngs::Rack *rack, Ptr<void> callback) {
         return RET_ERROR(SCE_NGS_ERROR_INVALID_ARG);
 
     std::unique_lock<std::recursive_mutex> lock(rack->system->voice_scheduler.mutex);
+    LOG_INFO("[NGSLIFE] sceNgsRackRelease rack={} callback={:#x} updating={} same_thread_as_update={}", fmt::ptr(rack), callback.address(),
+        rack->system->voice_scheduler.is_updating, rack->system->voice_scheduler.updating_thread == std::this_thread::get_id());
     if (rack->system->voice_scheduler.is_updating && !callback && rack->system->voice_scheduler.updating_thread == std::this_thread::get_id()) {
         // called from a callback running inside sceNgsSystemUpdate: waiting for the update to end would wait for ourselves
         // forever (this froze games), so the rack is released at the end of this update instead
@@ -390,6 +392,7 @@ EXPORT(SceInt32, sceNgsRackRelease, ngs::Rack *rack, Ptr<void> callback) {
 
         guest_sched_release_for_block();
         rack->system->voice_scheduler.condvar.wait(lock);
+        LOG_INFO("[NGSLIFE] sceNgsRackRelease rack={} update finished, releasing now", fmt::ptr(rack));
         ngs::release_rack(emuenv.ngs, emuenv.mem, rack->system, rack);
     } else {
         // destroy rack asynchronously

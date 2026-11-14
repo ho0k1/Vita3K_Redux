@@ -190,6 +190,60 @@ private:
     std::deque<Request> pending;
 };
 
+// copy of every audio related line (NGS, sceAudio, ATRAC9 ...) of an app session into its own audio_*.log
+class audio_file_sink final : public spdlog::sinks::base_sink<std::mutex> {
+public:
+    ~audio_file_sink() override {
+        close_file();
+    }
+
+    void open(const fs::path &path) {
+        const std::lock_guard<std::mutex> lock(this->mutex_);
+        close_file();
+        file = std::fopen(path.string().c_str(), "wb");
+        written = 0;
+    }
+
+    void close() {
+        const std::lock_guard<std::mutex> lock(this->mutex_);
+        close_file();
+    }
+
+protected:
+    void sink_it_(const spdlog::details::log_msg &msg) override {
+        if (!file || written >= SESSION_SIZE_CAP)
+            return;
+        const std::string_view text(msg.payload.data(), msg.payload.size());
+        const auto has = [&](std::string_view part) { return text.find(part) != std::string_view::npos; };
+        if (!(has("Ngs") || has("NGS") || has("Audio") || has("AUDIO") || has("audio") || has("Atrac") || has("ATRAC") || has("atrac")))
+            return;
+        spdlog::memory_buf_t formatted;
+        formatter_->format(msg, formatted);
+        written += formatted.size();
+        std::fwrite(formatted.data(), 1, formatted.size(), file);
+        if (msg.level >= spdlog::level::warn)
+            std::fflush(file);
+    }
+
+    void flush_() override {
+        if (file)
+            std::fflush(file);
+    }
+
+private:
+    void close_file() {
+        if (file) {
+            std::fflush(file);
+            std::fclose(file);
+            file = nullptr;
+        }
+    }
+
+    std::FILE *file = nullptr;
+    uintmax_t written = 0;
+};
+
+static std::shared_ptr<audio_file_sink> s_audio_sink;
 static std::shared_ptr<session_file_sink> s_session_sink;
 static std::mutex s_session_api_mutex;
 static fs::path s_emulator_session_path;
@@ -423,7 +477,7 @@ static void apply_levels() {
         session_level = std::min(static_cast<spdlog::level::level_enum>(s_session_level_override), spdlog::level::info);
     spdlog::set_level(std::min(s_user_level, session_level));
     for (const auto &sink : sinks) {
-        if (sink == s_session_sink)
+        if (sink == s_session_sink || sink == s_audio_sink)
             sink->set_level(session_level);
 #ifdef __ANDROID__
         else if (sink == s_logcat_sink)
@@ -495,6 +549,13 @@ void begin_session(SessionKind kind, const std::string &label) {
     s_session_start = std::chrono::steady_clock::now();
 
     switch_session_file(path, false);
+    if (s_audio_sink) {
+        s_audio_sink->close();
+        if (kind != SessionKind::Emulator) {
+            rotate_sessions(dir, "audio");
+            s_audio_sink->open(dir / ("audio_" + name.substr(prefix.size() + 1) + ".log"));
+        }
+    }
     if (kind != SessionKind::Emulator) {
         session_diag::reset();
         write_marker(fmt::format("session {} started", name));
@@ -520,6 +581,8 @@ void end_session() {
     fs::remove(marker_path(), marker_ec); // ended cleanly
 
     s_app_session_active = false;
+    if (s_audio_sink)
+        s_audio_sink->close();
     // back to the emulator session (state after the app), appending to the file of the start of this process
     if (!s_emulator_session_path.empty()) {
         switch_session_file(s_emulator_session_path, true);
@@ -558,6 +621,8 @@ ExitCode init(const Root &root_paths, bool use_stdout) {
     s_log_file_path = root_paths.get_log_path() / LOG_FILE_NAME;
     s_session_sink = std::make_shared<session_file_sink>();
     sinks.push_back(s_session_sink);
+    s_audio_sink = std::make_shared<audio_file_sink>();
+    sinks.push_back(s_audio_sink);
     if (add_sink(root_paths.get_log_path() / LOG_FILE_NAME) != Success)
         return InitConfigFailed;
     load_session_level();

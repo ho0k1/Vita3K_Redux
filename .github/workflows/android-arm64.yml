@@ -73,3 +73,17 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_DIR }}
+
+      # the unstripped library lets crash frames like libVita3K.so+0x17BAD98 be resolved with addr2line
+      - name: Collect native symbols
+        run: |
+          mkdir -p symbols
+          find android/app/build -name libVita3K.so -path "*merged_native_libs*" -prune -o -name libVita3K.so -print | head -3 | while read -r f; do cp "$f" symbols/libVita3K.so && break; done
+          ls -la symbols
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}-symbols
+          path: symbols
+          if-no-files-found: warn
+          retention-days: 14
