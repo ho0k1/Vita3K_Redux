@@ -1,5 +1,5 @@
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index ee8e396..9ded40c 100644
+index ee8e396..cba57ec 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
 @@ -10,6 +10,156 @@
@@ -11,7 +11,7 @@ index ee8e396..9ded40c 100644
 +
 +namespace
 +{
-+constexpr int MAX_RETRIES = 5;
++constexpr int MAX_RETRIES = 10; // delays 3,6,12,24,48 s then 60 s each: about 6 minutes of dead network
 +constexpr const char* QUEUE_FILE = "ux0:pkgj/queue.txt";
 +constexpr const char* STATUS_FILE = "ux0:pkgj/status.txt";
 +constexpr const char* CANCEL_FILE = "ux0:pkgj/cancel.req";
@@ -492,7 +492,7 @@ index ee8e396..9ded40c 100644
 +                            raw.c_str());
 +                    // progress since the last failure means the link works, count from scratch
 +                    const uint64_t offset = _download_offset.load();
-+                    if (offset > last_fail_offset + 1024 * 1024)
++                    if (offset > last_fail_offset + 64 * 1024)
 +                        attempt = 0;
 +                    last_fail_offset = offset;
 +                    if (info.retryable && attempt < MAX_RETRIES)
