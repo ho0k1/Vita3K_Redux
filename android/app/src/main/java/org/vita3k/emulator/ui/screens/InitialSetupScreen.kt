@@ -216,17 +216,6 @@ private fun WelcomePage() {
                 color = setupTextColor,
                 textAlign = TextAlign.Center
             )
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            HtmlText(
-                html = stringResource(R.string.initial_setup_info_html),
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyLarge,
-                textColor = setupTextColor,
-                gravity = Gravity.CENTER
-            )
-
         }
     }
 }
