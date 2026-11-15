@@ -177,7 +177,8 @@
 
     <!-- Initial setup -->
     <string name="initial_setup_welcome_title">Welcome to Vita3K Redux</string>
-    <string name="initial_setup_welcome_body">Vita3K is an open-source PlayStation Vita emulator written in C++ for Windows, Linux, macOS, and Android. The emulator is still under active development, so feedback and testing are greatly appreciated.</string>
+    <string name="initial_setup_welcome_body">Vita3K Redux is a PlayStation Vita emulator for Android, built on Vita3K and Vita3K Plus. It adds a PKGj store with resilient background downloads, reworked audio, performance profiles and detailed session logs.</string>
+    <string name="initial_setup_info_html"><![CDATA[<div align="center">To get started, please install all PS Vita firmware files.<br><br>PKGj is built in: open it from the app list to browse and download games, DLC and updates. Downloads continue in the background, retry on network drops and resume where they stopped.<br><br>Check the <a href="https://vita3k.org/compatibility.html">commercial</a> and <a href="https://vita3k.org/compatibility-homebrew.html">homebrew</a> compatibility lists to see what currently runs. Vita3K Redux is based on the work of the <a href="https://github.com/Vita3K/Vita3K">Vita3K</a> team.</div>]]></string>
     <string name="initial_setup_piracy_notice">Vita3K does not condone piracy. You must dump your own games.</string>
     <string name="initial_setup_firmware_title">Install Firmware</string>
     <string name="initial_setup_firmware_body">To get started, install the PS Vita firmware files below.</string>

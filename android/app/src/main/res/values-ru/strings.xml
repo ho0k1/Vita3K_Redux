@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Initial setup -->
+    <string name="initial_setup_welcome_title">Добро пожаловать в Vita3K Redux</string>
+    <string name="initial_setup_welcome_body">Vita3K Redux — эмулятор PlayStation Vita для Android на основе Vita3K и Vita3K Plus. В нём есть магазин PKGj с устойчивыми фоновыми загрузками, переработанный звук, профили производительности и подробные журналы сеансов.</string>
+    <string name="initial_setup_info_html"><![CDATA[<div align="center">Для начала установите все файлы прошивки PS Vita.<br><br>PKGj встроен: откройте его из списка приложений, чтобы искать и скачивать игры, дополнения и обновления. Загрузки идут в фоне, повторяются при обрывах сети и продолжаются с того места, где остановились.<br><br>Списки совместимости: <a href="https://vita3k.org/compatibility.html">коммерческие игры</a> и <a href="https://vita3k.org/compatibility-homebrew.html">homebrew</a>. Vita3K Redux основан на работе команды <a href="https://github.com/Vita3K/Vita3K">Vita3K</a>.</div>]]></string>
+    <string name="initial_setup_piracy_notice">Vita3K не поддерживает пиратство. Вы должны сделать дамп своих игр самостоятельно.</string>
+</resources>
