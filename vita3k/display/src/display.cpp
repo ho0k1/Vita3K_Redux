@@ -298,7 +298,10 @@ static void vblank_sync_thread(EmuEnvState &emuenv) {
                 last_create_change_vblank = 0;
             }
             last_seen_vblanks = vblanks;
-            const bool unpaused = !emuenv.kernel.is_threads_paused();
+            // PKGj keeps running in the background while it downloads: frames flip but nothing reaches the renderer,
+            // which looks like a hang to this watchdog. It is expected there, so the dumps and breakers stay off.
+            const bool watchdog_exempt = emuenv.app_info.app_title_id == "PKGJ00000";
+            const bool unpaused = !emuenv.kernel.is_threads_paused() && !watchdog_exempt;
             const bool never_flipped = (setframe == 0);
             const uint64_t stall_vblanks = (vblanks > setframe) ? (vblanks - setframe) : 0;
             const uint64_t progress_now = emuenv.renderer ? emuenv.renderer->progress_counter.load(std::memory_order_relaxed) : 0;
