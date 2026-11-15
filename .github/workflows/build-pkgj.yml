@@ -37,6 +37,8 @@ jobs:
             echo "Applying $p"
             git -C pkgj-src apply --verbose "$GITHUB_WORKSPACE/$p"
           done
+          # bundled font with Cyrillic glyphs (DejaVu Sans, free licence) for the Russian UI
+          cp pkgj/assets/DejaVuSans.ttf pkgj-src/assets/DejaVuSans.ttf
 
       - name: Install apt dependencies
         run: |
