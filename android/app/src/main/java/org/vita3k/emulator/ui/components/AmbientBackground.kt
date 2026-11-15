@@ -1,11 +1,5 @@
 package org.vita3k.emulator.ui.components
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -14,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -45,7 +37,7 @@ private class Bokeh(
 )
 
 /**
- * Redux signature background: deep dusk gradient with slowly drifting golden bokeh.
+ * Redux signature background: deep dusk gradient with static golden bokeh.
  * Draws only; place content on top of it.
  */
 @Composable
@@ -65,13 +57,6 @@ fun AmbientBackground(modifier: Modifier = Modifier, particles: Int = 46) {
             )
         }
     }
-    val t by rememberInfiniteTransition(label = "ambient").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(60_000, easing = LinearEasing), RepeatMode.Restart),
-        label = "ambient-t"
-    )
-
     Canvas(
         modifier = modifier
             .fillMaxSize()
@@ -79,10 +64,9 @@ fun AmbientBackground(modifier: Modifier = Modifier, particles: Int = 46) {
     ) {
         val density = size.minDimension / 360f
         bokeh.forEach { b ->
-            val angle = (t + b.phase) * 2f * PI.toFloat()
-            val cx = (b.x + sin(angle) * b.drift) * size.width
-            val cy = (b.y - ((t * 2f + b.phase) % 1f) * 0.02f + sin(angle * 2f) * b.drift * 0.6f) * size.height
-            val twinkle = 0.65f + 0.35f * sin(angle * 3f + b.phase * 6f)
+            val cx = b.x * size.width
+            val cy = b.y * size.height
+            val twinkle = 0.65f + 0.35f * sin(b.phase * 6.2832f)
             val r = b.radius * density
             val a = b.alpha * twinkle
             drawCircle(

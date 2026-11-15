@@ -227,15 +227,6 @@ private fun WelcomePage() {
                 gravity = Gravity.CENTER
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Text(
-                text = stringResource(R.string.initial_setup_piracy_notice),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }
