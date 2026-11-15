@@ -57,7 +57,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import org.vita3k.emulator.R
+import org.vita3k.emulator.ui.components.AmbientBackground
 import org.vita3k.emulator.data.FirmwareInstallState
 import org.vita3k.emulator.data.AppInfo
 import org.vita3k.emulator.data.FirmwareComponent
@@ -123,176 +126,179 @@ fun AppsListScreen(
     var pendingAction by remember { mutableStateOf<AppAction?>(null) }
     var showBatchDeleteConfirm by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            FloatingActionButton(onClick = onInstallClick) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.apps_list_cd_install))
-            }
-        },
-        topBar = {
-            if (showSearchBar) {
-                SearchBar(
-                    query = searchQuery,
-                    onQueryChange = onSearchChanged,
-                    onClose = {
-                        showSearchBar = false
-                        onSearchChanged("")
-                    }
-                )
-            } else {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    title = {
-                        if (selectionMode) {
-                            Text(pluralStringResource(R.plurals.apps_list_n_selected, selectedAppIds.size, selectedAppIds.size))
-                        } else {
-                            AppsListTitle(appVersion = appVersion)
+    Box(modifier = Modifier.fillMaxSize()) {
+        AmbientBackground()
+        Scaffold(
+            containerColor = Color.Transparent,
+            floatingActionButton = {
+                FloatingActionButton(onClick = onInstallClick) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.apps_list_cd_install))
+                }
+            },
+            topBar = {
+                if (showSearchBar) {
+                    SearchBar(
+                        query = searchQuery,
+                        onQueryChange = onSearchChanged,
+                        onClose = {
+                            showSearchBar = false
+                            onSearchChanged("")
                         }
-                    },
-                    navigationIcon = {
-                        if (selectionMode) {
-                            IconButton(onClick = { onSetSelectionMode(false) }) {
-                                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.apps_list_cd_exit_selection))
+                    )
+                } else {
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        title = {
+                            if (selectionMode) {
+                                Text(pluralStringResource(R.plurals.apps_list_n_selected, selectedAppIds.size, selectedAppIds.size))
+                            } else {
+                                AppsListTitle(appVersion = appVersion)
                             }
-                        }
-                    },
-                    actions = {
-                        if (selectionMode) {
-                            IconButton(onClick = onSelectAllVisible) {
-                                Icon(Icons.Default.Check, contentDescription = stringResource(R.string.apps_list_cd_select_all))
-                            }
-                            IconButton(
-                                enabled = selectedAppIds.isNotEmpty(),
-                                onClick = { showBatchDeleteConfirm = true }
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.apps_list_cd_delete_selected))
-                            }
-                        } else {
-                            IconButton(onClick = { showSearchBar = true }) {
-                                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.apps_list_cd_search))
-                            }
-                            IconButton(onClick = onOpenSettings) {
-                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_cd_open))
-                            }
-                            IconButton(onClick = { showFilterSheet = true }) {
-                                Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter_cd_open))
-                            }
-                            AppsListOverflowMenu(
-                                expanded = showOverflowMenu,
-                                onExpandedChange = { showOverflowMenu = it },
-                                onRefresh = {
-                                    showOverflowMenu = false
-                                    onRefresh()
-                                },
-                                onTrophyManager = {
-                                    showOverflowMenu = false
-                                    onOpenTrophyManager()
-                                },
-                                onUserManagement = {
-                                    showOverflowMenu = false
-                                    onOpenUserManagement()
-                                },
-                                onWelcomeScreen = {
-                                    showOverflowMenu = false
-                                    onOpenWelcomeScreen()
-                                },
-                                onCheckForUpdates = {
-                                    showOverflowMenu = false
-                                    onCheckForUpdates()
-                                },
-                                onAbout = {
-                                    showOverflowMenu = false
-                                    showAboutSheet = true
+                        },
+                        navigationIcon = {
+                            if (selectionMode) {
+                                IconButton(onClick = { onSetSelectionMode(false) }) {
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.apps_list_cd_exit_selection))
                                 }
-                            )
+                            }
+                        },
+                        actions = {
+                            if (selectionMode) {
+                                IconButton(onClick = onSelectAllVisible) {
+                                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.apps_list_cd_select_all))
+                                }
+                                IconButton(
+                                    enabled = selectedAppIds.isNotEmpty(),
+                                    onClick = { showBatchDeleteConfirm = true }
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.apps_list_cd_delete_selected))
+                                }
+                            } else {
+                                IconButton(onClick = { showSearchBar = true }) {
+                                    Icon(Icons.Default.Search, contentDescription = stringResource(R.string.apps_list_cd_search))
+                                }
+                                IconButton(onClick = onOpenSettings) {
+                                    Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_cd_open))
+                                }
+                                IconButton(onClick = { showFilterSheet = true }) {
+                                    Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter_cd_open))
+                                }
+                                AppsListOverflowMenu(
+                                    expanded = showOverflowMenu,
+                                    onExpandedChange = { showOverflowMenu = it },
+                                    onRefresh = {
+                                        showOverflowMenu = false
+                                        onRefresh()
+                                    },
+                                    onTrophyManager = {
+                                        showOverflowMenu = false
+                                        onOpenTrophyManager()
+                                    },
+                                    onUserManagement = {
+                                        showOverflowMenu = false
+                                        onOpenUserManagement()
+                                    },
+                                    onWelcomeScreen = {
+                                        showOverflowMenu = false
+                                        onOpenWelcomeScreen()
+                                    },
+                                    onCheckForUpdates = {
+                                        showOverflowMenu = false
+                                        onCheckForUpdates()
+                                    },
+                                    onAbout = {
+                                        showOverflowMenu = false
+                                        showAboutSheet = true
+                                    }
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+        ) { padding ->
+            when {
+                loading && apps.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                !initialized -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(stringResource(R.string.apps_list_init_failed))
+                    }
+                }
+                apps.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when {
+                            searchQuery.isNotEmpty() -> {
+                                AppsEmptyState(
+                                    title = stringResource(R.string.apps_list_empty_search, searchQuery)
+                                )
+                            }
+                            !firmwareInstallState.hasRequiredComponents -> {
+                                FirmwareMissingEmptyState(
+                                    firmwareInstallState = firmwareInstallState,
+                                    onInstallClick = onInstallClick
+                                )
+                            }
+                            else -> {
+                                AppsEmptyState(
+                                    title = stringResource(R.string.apps_list_empty_no_apps),
+                                    actionLabel = stringResource(R.string.apps_list_install_app),
+                                    onAction = onInstallClick
+                                )
+                            }
                         }
                     }
-                )
-            }
-        }
-    ) { padding ->
-        when {
-            loading && apps.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
                 }
-            }
-            !initialized -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(stringResource(R.string.apps_list_init_failed))
-                }
-            }
-            apps.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    when {
-                        searchQuery.isNotEmpty() -> {
-                            AppsEmptyState(
-                                title = stringResource(R.string.apps_list_empty_search, searchQuery)
-                            )
-                        }
-                        !firmwareInstallState.hasRequiredComponents -> {
-                            FirmwareMissingEmptyState(
-                                firmwareInstallState = firmwareInstallState,
-                                onInstallClick = onInstallClick
-                            )
-                        }
-                        else -> {
-                            AppsEmptyState(
-                                title = stringResource(R.string.apps_list_empty_no_apps),
-                                actionLabel = stringResource(R.string.apps_list_install_app),
-                                onAction = onInstallClick
-                            )
-                        }
+                else -> {
+                    when (viewMode) {
+                        ViewMode.LIST -> AppsListView(
+                            apps = apps,
+                            onAppSelected = onAppSelected,
+                            selectedAppIds = selectedAppIds,
+                            selectionMode = selectionMode,
+                            onSelectionClick = { onToggleAppSelection(it) },
+                            onActionLongPress = {
+                                selectedAppForActions = it
+                                onPrepareAppActions(it)
+                            },
+                            modifier = Modifier.padding(padding)
+                        )
+                        ViewMode.GRID -> AppsGridView(
+                            apps = apps,
+                            onAppSelected = onAppSelected,
+                            selectedAppIds = selectedAppIds,
+                            selectionMode = selectionMode,
+                            onSelectionClick = { onToggleAppSelection(it) },
+                            onActionLongPress = {
+                                selectedAppForActions = it
+                                onPrepareAppActions(it)
+                            },
+                            modifier = Modifier.padding(padding)
+                        )
                     }
-                }
-            }
-            else -> {
-                when (viewMode) {
-                    ViewMode.LIST -> AppsListView(
-                        apps = apps,
-                        onAppSelected = onAppSelected,
-                        selectedAppIds = selectedAppIds,
-                        selectionMode = selectionMode,
-                        onSelectionClick = { onToggleAppSelection(it) },
-                        onActionLongPress = {
-                            selectedAppForActions = it
-                            onPrepareAppActions(it)
-                        },
-                        modifier = Modifier.padding(padding)
-                    )
-                    ViewMode.GRID -> AppsGridView(
-                        apps = apps,
-                        onAppSelected = onAppSelected,
-                        selectedAppIds = selectedAppIds,
-                        selectionMode = selectionMode,
-                        onSelectionClick = { onToggleAppSelection(it) },
-                        onActionLongPress = {
-                            selectedAppForActions = it
-                            onPrepareAppActions(it)
-                        },
-                        modifier = Modifier.padding(padding)
-                    )
                 }
             }
         }
@@ -934,7 +940,7 @@ private fun AppsListView(
                     }
                 },
                 colors = ListItemDefaults.colors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     headlineColor = MaterialTheme.colorScheme.onSurface,
                     supportingColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
