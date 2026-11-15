@@ -63,6 +63,8 @@ typedef std::map<SceUID, SceKernelModulePtr> SceKernelModuleInfoPtrs;
 typedef std::map<SceUID, CallbackPtr> CallbackPtrs;
 typedef unordered_map_fast<uint32_t, Address> ExportNids;
 typedef unordered_map_fast<uint64_t, Address> LibExportNids;
+// which library owns the plain NID entry of export_nids (only the owner may drop it on unload)
+typedef unordered_map_fast<uint32_t, uint32_t> ExportNidOwners;
 constexpr uint64_t lib_export_key(uint32_t library_nid, uint32_t nid) {
     return (static_cast<uint64_t>(library_nid) << 32) | nid;
 }
@@ -151,6 +153,7 @@ struct KernelState {
     std::mutex export_nids_mutex;
     ExportNids export_nids;
     LibExportNids export_nids_by_lib;
+    ExportNidOwners export_nid_owners;
     FuncBindingInfos func_binding_infos;
     std::unordered_map<uint32_t, std::string> nid_libraries;
     VarBindingInfos var_binding_infos;
