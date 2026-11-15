@@ -66,7 +66,11 @@ bool decrypt_install_nonpdrm(EmuEnvState &emuenv, const fs::path &drmlicpath, co
 
     const bool is_theme = title_path.parent_path().filename() == "theme";
     boost::system::error_code ec;
-    if (execute(zRIF, title_id_src, title_id_dst, f00d_enc_type, f00d_arg) < 0 && !is_theme) {
+    boost::system::error_code size_ec;
+    const auto lic_size = fs::file_size(drmlicpath, size_ec);
+    const int rc = execute(zRIF, title_id_src, title_id_dst, f00d_enc_type, f00d_arg);
+    if (rc < 0 && !is_theme) {
+        LOG_ERROR("NoNpDrm decryption failed: rc={} license={} ({} bytes, zrif {} chars) src={}", rc, drmlicpath, size_ec ? 0 : lic_size, zRIF.size(), title_path);
         fs::remove_all(title_id_dst, ec);
         return false;
     }
