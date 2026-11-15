@@ -327,7 +327,8 @@ EXPORT(int, sceClibSnprintf, char *dst, SceSize dst_max_size, const char *fmt, m
 
     int result = utils::snprintf(dst, dst_max_size, fmt, *(thread->cpu), emuenv.mem, args);
 
-    if (!result) {
+    // an empty result is not an error, it is a valid length of 0
+    if (result < 0) {
         return SCE_KERNEL_ERROR_INVALID_ARGUMENT;
     }
 

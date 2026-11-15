@@ -455,7 +455,7 @@
     <string name="settings_audio_backend">Audio Backend</string>
     <string name="settings_audio_backend_desc">Select the audio backend.\nCubeb is recommended for most systems.</string>
     <string name="settings_audio_volume">Volume</string>
-    <string name="settings_audio_volume_desc">Set the in-game audio volume.</string>
+    <string name="settings_audio_volume_desc">Set the in-game audio volume. Values above 100% amplify quiet games (may distort).</string>
     <string name="settings_audio_volume_value">Current volume: %1$d%%</string>
     <string name="settings_audio_ngs">Enable NGS Support</string>
     <string name="settings_audio_ngs_desc">Enable advanced audio library NGS support.</string>

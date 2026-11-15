@@ -26,6 +26,19 @@ static uint64_t steady_now_us() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
+// scales S16LE samples in place: pushes the volume past the 1.0 ceiling cubeb enforces natively
+static void apply_extra_gain(uint8_t *buffer, int nb_bytes, float gain) {
+    if (gain == 1.0f)
+        return;
+
+    int16_t *samples = reinterpret_cast<int16_t *>(buffer);
+    const int nb_samples = nb_bytes / static_cast<int>(sizeof(int16_t));
+    for (int i = 0; i < nb_samples; i++) {
+        const float amplified = samples[i] * gain;
+        samples[i] = static_cast<int16_t>(std::clamp(amplified, static_cast<float>(INT16_MIN), static_cast<float>(INT16_MAX)));
+    }
+}
+
 static int queued_frames(const CubebAudioOutPort &port) {
     if (port.nb_buffers_ready <= 0 || port.frame_bytes == 0)
         return 0;
@@ -71,6 +84,8 @@ static long impl_cubeb_audio_callback(cubeb_stream *stream, void *user_data, con
             released++;
         }
     }
+
+    apply_extra_gain(output_buffer, bytes_given, port->extra_gain.load(std::memory_order_relaxed));
 
     // ran dry so play silence instead of whatever the device buffer held before
     if (bytes_given < bytes_to_give)
@@ -201,7 +216,9 @@ void CubebAudioAdapter::audio_output(AudioOutPort &out_port, const void *buffer)
 
 void CubebAudioAdapter::set_volume(AudioOutPort &out_port, float volume) {
     CubebAudioOutPort &port = static_cast<CubebAudioOutPort &>(out_port);
-    cubeb_stream_set_volume(port.out_stream, volume);
+    // cubeb rejects volumes outside [0.0, 1.0]; the part above 1.0 is applied to the samples in the callback
+    cubeb_stream_set_volume(port.out_stream, std::min(volume, 1.0f));
+    port.extra_gain.store(std::max(volume, 1.0f), std::memory_order_relaxed);
 }
 
 int CubebAudioAdapter::get_rest_sample(AudioOutPort &out_port) {

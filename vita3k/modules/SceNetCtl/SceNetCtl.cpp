@@ -573,6 +573,18 @@ EXPORT(int, sceNetCtlInetGetInfo, int code, SceNetCtlInfo *info) {
         info->device = 0; /*SCE_NET_CTL_DEVICE_WIRELESS*/
         // STUBBED("SCE_NETCTL_INFO_GET_DEVICE return SCE_NET_CTL_DEVICE_WIRELESS");
         break;
+    case SCE_NETCTL_INFO_GET_ETHER_ADDR: {
+        SceNetEtherAddr ether_addr{};
+        const int result = CALL_EXPORT(sceNetGetMacAddress, &ether_addr, 0);
+        static constexpr unsigned char zero_mac[sizeof(ether_addr.data)]{};
+        if (result < 0 || std::memcmp(ether_addr.data, zero_mac, sizeof(zero_mac)) == 0) {
+            // newer Android hides the real MAC: report a fixed one like sceNetGetMacAddress does without adapters
+            static constexpr unsigned char fallback_mac[6] = { 0xEE, 0xEE, 0xEE, 0xBA, 0xDA, 0x55 };
+            std::memcpy(ether_addr.data, fallback_mac, sizeof(fallback_mac));
+        }
+        info->ether_addr = ether_addr;
+        break;
+    }
     case SCE_NETCTL_INFO_GET_RSSI_PERCENTAGE:
         info->rssi_percentage = 100;
         // STUBBED("code SCE_NETCTL_INFO_GET_RSSI_PERCENTAGE return 100%");
@@ -589,9 +601,6 @@ EXPORT(int, sceNetCtlInetGetInfo, int code, SceNetCtlInfo *info) {
         switch (code) {
         case SCE_NETCTL_INFO_GET_CNF_NAME:
             STUBBED("code SCE_NETCTL_INFO_GET_CNF_NAME not implemented");
-            break;
-        case SCE_NETCTL_INFO_GET_ETHER_ADDR:
-            STUBBED("code SCE_NETCTL_INFO_GET_ETHER_ADDR not implemented");
             break;
         case SCE_NETCTL_INFO_GET_MTU:
             STUBBED("code SCE_NETCTL_INFO_GET_MTU not implemented");

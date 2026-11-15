@@ -774,7 +774,7 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
 
         SceKernelSegmentInfo &segment = sceKernelModuleInfo->segments[segment_index];
         segment.size = sizeof(segment);
-        segment.perms = segments[segment_index].p_flags;
+        segment.perms = segments[segment_index].p_flags & 0x7; // PF_R | PF_W | PF_X
         segment.vaddr = it->second.addr;
         segment.memsz = segments[segment_index].p_memsz;
         segment.filesz = segments[segment_index].p_filesz;
