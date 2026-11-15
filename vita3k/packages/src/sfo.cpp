@@ -135,6 +135,18 @@ bool load(SfoFile &sfile, const std::vector<uint8_t> &content) {
 
     bool all_parsed = true;
     sfile.entries.resize(entry_count);
+
+    // some SFOs understate a string's length: its terminator is still inside the entry's capacity,
+    // which ends at data_max_len, the next entry's data or the end of the buffer
+    const size_t data_table_size = content.size() - data_table_start;
+    std::vector<uint32_t> data_offsets;
+    data_offsets.reserve(entry_count);
+    for (size_t i = 0; i < entry_count; i++) {
+        SfoIndexTableEntry raw_entry;
+        memcpy(&raw_entry, content.data() + sizeof(SfoHeader) + i * sizeof(SfoIndexTableEntry), sizeof(SfoIndexTableEntry));
+        data_offsets.push_back(raw_entry.data_offset);
+    }
+    std::sort(data_offsets.begin(), data_offsets.end());
     for (size_t i = 0; i < entry_count; i++) {
         SfoFile::SfoEntry &entry = sfile.entries[i];
         memcpy(&entry.entry, content.data() + sizeof(SfoHeader) + i * sizeof(SfoIndexTableEntry), sizeof(SfoIndexTableEntry));
@@ -180,7 +192,10 @@ bool load(SfoFile &sfile, const std::vector<uint8_t> &content) {
             break;
         case SfoDataFormat::UTF8_NULL: {
             // up to the terminator, which a well-formed entry counts in its length
-            const auto *const terminator = static_cast<const char *>(memchr(data, '\0', data_len));
+            const auto next = std::upper_bound(data_offsets.begin(), data_offsets.end(), entry.entry.data_offset);
+            const size_t next_offset = next == data_offsets.end() ? data_table_size : *next;
+            const size_t capacity = std::max<size_t>(data_len, std::min({ static_cast<size_t>(entry.entry.data_max_len), data_table_size - data_offset, next_offset - data_offset }));
+            const auto *const terminator = static_cast<const char *>(memchr(data, '\0', capacity));
             entry.data.second.assign(data, terminator ? static_cast<size_t>(terminator - data) : data_len);
             break;
         }

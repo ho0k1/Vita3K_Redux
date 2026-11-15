@@ -12,6 +12,7 @@ add_library(
 	src/session_diag.cpp
 	src/net_utils.cpp
 	src/string_utils.cpp
+	src/sysinfo.cpp
 	src/tracy.cpp
 	src/vita_theme_utils.cpp
 )

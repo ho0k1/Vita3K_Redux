@@ -29,6 +29,7 @@
 #include <util/android_driver.h>
 #include <util/log.h>
 #include <util/mem_snapshot.h>
+#include <util/sysinfo.h>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -81,6 +82,7 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths, std::uni
             return false;
 
         LOG_INFO("{}", window_title);
+        LOG_INFO("CPU: {}", util::get_system_info());
 
         emuenv = std::make_unique<EmuEnvState>();
 
