@@ -65,7 +65,9 @@ import androidx.compose.ui.unit.dp
 import org.vita3k.emulator.R
 import org.vita3k.emulator.data.FirmwareInstallState
 import org.vita3k.emulator.data.FirmwareLinks
+import org.vita3k.emulator.ui.components.AmbientBackground
 import org.vita3k.emulator.ui.components.HtmlText
+import org.vita3k.emulator.ui.components.ReduxEmblem
 
 private val setupPanelColor = Color(0xFF1F1D1C)
 private val setupCardColor = Color(0xFF2B2B2B)
@@ -86,33 +88,8 @@ fun InitialSetupScreen(
         mutableIntStateOf(FirmwareLinks.coerceLocaleIndex(preferredLanguageIndex))
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
-                    )
-                )
-            )
-    ) {
-        BackgroundOrb(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 24.dp, top = 88.dp),
-            size = 180.dp,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)
-        )
-        BackgroundOrb(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 8.dp, bottom = 72.dp),
-            size = 220.dp,
-            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f)
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        AmbientBackground()
 
         Column(
             modifier = Modifier
@@ -149,8 +126,8 @@ fun InitialSetupScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                color = setupPanelColor,
+                shape = RoundedCornerShape(36.dp),
+                color = setupPanelColor.copy(alpha = 0.78f),
                 contentColor = setupTextColor,
                 tonalElevation = 6.dp,
                 border = BorderStroke(
@@ -208,20 +185,6 @@ fun InitialSetupScreen(
 }
 
 @Composable
-private fun BackgroundOrb(
-    modifier: Modifier = Modifier,
-    size: androidx.compose.ui.unit.Dp,
-    color: Color
-) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(color)
-    )
-}
-
-@Composable
 private fun WelcomePage() {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -233,13 +196,7 @@ private fun WelcomePage() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Image(
-                painter = painterResource(id = R.mipmap.ic_launcher_plus),
-                contentDescription = stringResource(R.string.apps_list_app_title),
-                modifier = Modifier
-                    .size(112.dp)
-                    .alpha(0.96f)
-            )
+            ReduxEmblem(size = 120.dp)
 
             Spacer(modifier = Modifier.height(20.dp))
 

@@ -12,17 +12,17 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowInsetsControllerCompat
 
-private val AppBackgroundColor = Color(0xFF111111)
-private val AppTopBarColor = Color(0xFF1C1C1C)
+private val AppBackgroundColor = Color(0xFF0E0D14)
+private val AppTopBarColor = Color(0xFF17161D)
 
 private val AppColorScheme = darkColorScheme(
-    primary = Color(0xFFFF9800),        
-    onPrimary = Color(0xFF1A0D00),
-    primaryContainer = Color(0xFF3D1F00),
-    onPrimaryContainer = Color(0xFFFFD8A8),
+    primary = Color(0xFFF2C27A),        
+    onPrimary = Color(0xFF2A1A00),
+    primaryContainer = Color(0xFF3A2D18),
+    onPrimaryContainer = Color(0xFFFFE3B8),
     secondary = Color(0xFF9E9E9E),        
     onSecondary = Color(0xFF1A1A1A),
-    secondaryContainer = Color(0xFF2C2C2C),
+    secondaryContainer = Color(0xFF2A2833),
     onSecondaryContainer = Color(0xFFE0E0E0),
     tertiary = Color(0xFFBDBDBD),
     onTertiary = Color(0xFF1A1A1A),
@@ -30,11 +30,11 @@ private val AppColorScheme = darkColorScheme(
     onBackground = Color(0xFFE8E8E8),
     surface = AppTopBarColor,
     onSurface = Color(0xFFE8E8E8),
-    surfaceVariant = Color(0xFF2A2A2A),
+    surfaceVariant = Color(0xFF2A2833),
     onSurfaceVariant = Color(0xFFB0B0B0),
-    surfaceContainerHigh = Color(0xFF222222),
-    surfaceContainerHighest = Color(0xFF2A2A2A),
-    outline = Color(0xFF444444),
+    surfaceContainerHigh = Color(0xFF211F29),
+    surfaceContainerHighest = Color(0xFF2A2833),
+    outline = Color(0xFF4A4756),
     error = Color(0xFFFF6B6B),
     onError = Color(0xFF1A0000)
 )
