@@ -609,8 +609,10 @@ SceUID load_self(KernelState &kernel, MemState &mem, const void *self, const std
 
     for (Elf_Half seg_index = 0; seg_index < elf.e_phnum; ++seg_index) {
         const Elf32_Phdr &seg_header = segments[seg_index];
+        // a SELF gives each segment's position in its segment info; p_offset describes the ELF it was made from,
+        // and agrees only when the whole ELF was embedded at header_len (fake SELFs), never in a real one
         const uint8_t *const seg_bytes = is_self
-            ? (image_bytes + self_header.header_len + seg_header.p_offset)
+            ? (image_bytes + seg_infos[seg_index].offset)
             : (elf_bytes + seg_header.p_offset);
 
         const auto uncompress_segment = [&](void *dst) {
