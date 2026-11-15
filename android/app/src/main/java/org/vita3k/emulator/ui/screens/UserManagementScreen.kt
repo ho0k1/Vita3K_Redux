@@ -50,6 +50,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import org.vita3k.emulator.ui.components.AmbientBackground
 import org.vita3k.emulator.R
 import org.vita3k.emulator.data.NativeUser
 import org.vita3k.emulator.ui.theme.ApplyDialogDim
@@ -70,83 +72,86 @@ fun UserManagementScreen(
         viewModel.load()
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                title = { Text(stringResource(R.string.user_management_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back)
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::load, enabled = !viewModel.loading && !viewModel.busy) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.user_management_refresh)
-                        )
-                    }
-                }
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                text = { Text(stringResource(R.string.user_management_create_user)) },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                onClick = { showCreateDialog = true },
-                expanded = true
-            )
-        }
-    ) { padding ->
-        when {
-            viewModel.loading && viewModel.users.isEmpty() -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        ActiveUserHero(
-                            activeUser = activeUser,
-                            onCreateUser = { showCreateDialog = true }
-                        )
-                    }
-
-                    if (viewModel.users.isEmpty()) {
-                        item {
-                            EmptyUsersCard(onCreateUser = { showCreateDialog = true })
-                        }
-                    } else {
-                        items(viewModel.users, key = { it.id }) { user ->
-                            UserCard(
-                                user = user,
-                                busy = viewModel.busy,
-                                onActivate = { viewModel.activateUser(user, onUsersChanged) },
-                                onDelete = { pendingDeletion = user }
+    Box(modifier = Modifier.fillMaxSize()) {
+        AmbientBackground()
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    title = { Text(stringResource(R.string.user_management_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back)
                             )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = viewModel::load, enabled = !viewModel.loading && !viewModel.busy) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.user_management_refresh)
+                            )
+                        }
+                    }
+                )
+            },
+            floatingActionButton = {
+                ExtendedFloatingActionButton(
+                    text = { Text(stringResource(R.string.user_management_create_user)) },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    onClick = { showCreateDialog = true },
+                    expanded = true
+                )
+            }
+        ) { padding ->
+            when {
+                viewModel.loading && viewModel.users.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(padding),
+                        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        item {
+                            ActiveUserHero(
+                                activeUser = activeUser,
+                                onCreateUser = { showCreateDialog = true }
+                            )
+                        }
+
+                        if (viewModel.users.isEmpty()) {
+                            item {
+                                EmptyUsersCard(onCreateUser = { showCreateDialog = true })
+                            }
+                        } else {
+                            items(viewModel.users, key = { it.id }) { user ->
+                                UserCard(
+                                    user = user,
+                                    busy = viewModel.busy,
+                                    onActivate = { viewModel.activateUser(user, onUsersChanged) },
+                                    onDelete = { pendingDeletion = user }
+                                )
+                            }
                         }
                     }
                 }

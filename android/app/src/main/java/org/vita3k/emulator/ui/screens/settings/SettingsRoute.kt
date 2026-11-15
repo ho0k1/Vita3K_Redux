@@ -52,6 +52,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import org.vita3k.emulator.MainActivity
+import androidx.compose.ui.graphics.Color
+import org.vita3k.emulator.ui.components.AmbientBackground
 import org.vita3k.emulator.R
 import org.vita3k.emulator.data.CustomDriverLoadStatus
 import org.vita3k.emulator.data.RestartRequiredSetting
@@ -218,11 +220,13 @@ fun SettingsRoute(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        AmbientBackground()
         Scaffold(
+            containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
                         titleContentColor = MaterialTheme.colorScheme.onSurface,
                         actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -320,7 +324,6 @@ fun SettingsRoute(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .background(MaterialTheme.colorScheme.background)
             ) {
                 SettingsContentPane(
                     modifier = Modifier.fillMaxSize(),
