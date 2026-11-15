@@ -46,6 +46,7 @@
 #include <kernel/sync_primitives.h>
 #include <kernel/thread/thread_state.h>
 #include <mem/functions.h>
+#include <packages/sfo.h>
 #include <mem/ptr.h>
 #include <renderer/state.h>
 
