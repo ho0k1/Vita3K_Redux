@@ -39,6 +39,8 @@ jobs:
           done
           # bundled font with Cyrillic glyphs (DejaVu Sans, free licence) for the Russian UI
           cp pkgj/assets/DejaVuSans.ttf pkgj-src/assets/DejaVuSans.ttf
+          # Redux look: dusk gradient with golden bokeh instead of the stock background
+          cp pkgj/assets/background.png pkgj-src/assets/background.png
 
       - name: Install apt dependencies
         run: |
