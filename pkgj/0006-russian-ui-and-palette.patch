@@ -322,9 +322,18 @@ index 62dba5a..9038178 100644
      // set when the failure can be fixed by trying again (network problems)
      std::optional<DownloadItem> retry;
 diff --git a/src/downloadsview.cpp b/src/downloadsview.cpp
-index 026946c..017bc34 100644
+index 026946c..bf1a1b0 100644
 --- a/src/downloadsview.cpp
 +++ b/src/downloadsview.cpp
+@@ -46,7 +46,7 @@ void DownloadsView::render(const pkgi_input& input)
+     std::vector<Row> rows;
+     const ImVec4 white(1.f, 1.f, 1.f, 1.f);
+     const ImVec4 green(0.3f, 1.f, 0.5f, 1.f);
+-    const ImVec4 yellow(1.f, 0.88f, 0.25f, 1.f);
++    const ImVec4 yellow(0.95f, 0.76f, 0.48f, 1.f);
+     const ImVec4 red(1.f, 0.35f, 0.35f, 1.f);
+     const ImVec4 dim(0.6f, 0.65f, 0.75f, 1.f);
+ 
 @@ -56,7 +56,7 @@ void DownloadsView::render(const pkgi_input& input)
          uint64_t offset;
          uint64_t size;
@@ -400,7 +409,7 @@ index 026946c..017bc34 100644
      ImGui::End();
  }
 diff --git a/src/gameview.cpp b/src/gameview.cpp
-index 0b16c8a..97bf28e 100644
+index 0b16c8a..a3202ad 100644
 --- a/src/gameview.cpp
 +++ b/src/gameview.cpp
 @@ -56,19 +56,19 @@ const char* presence_label(DbPresence presence)
@@ -454,6 +463,15 @@ index 0b16c8a..97bf28e 100644
              ImGui::Spacing();
  
              // Fit 3 screenshots across cover_w with small gaps
+@@ -308,7 +308,7 @@ void GameView::render()
+                     if (sel)
+                         ImGui::PushStyleColor(
+                                 ImGuiCol_Border,
+-                                ImVec4(0.5f, 0.8f, 1.f, 1.f));
++                                ImVec4(0.95f, 0.76f, 0.48f, 1.f));
+                     if (ImGui::ImageButton(
+                                 fmt::format("##ss{}", i).c_str(),
+                                 reinterpret_cast<ImTextureID>(ss_tx),
 @@ -405,10 +405,10 @@ void GameView::render()
          // Single combined firmware line: "Required: X.XX (current: Y.YY)"
          {
@@ -482,7 +500,7 @@ index 0b16c8a..97bf28e 100644
              else
                  ImGui::TextColored(
 -                        ImVec4(1.f, 0.88f, 0.25f, 1.f), "not installed");
-+                        ImVec4(1.f, 0.88f, 0.25f, 1.f), "не установлена");
++                        ImVec4(0.95f, 0.76f, 0.48f, 1.f), "не установлена");
  
              // Base compat pack status on the same line if there is info
              if (_comppack_versions.present ||
@@ -495,7 +513,7 @@ index 0b16c8a..97bf28e 100644
                  if (_comppack_versions.base.empty())
                      ImGui::TextColored(
 -                            ImVec4(1.f, 0.88f, 0.25f, 1.f), "no");
-+                            ImVec4(1.f, 0.88f, 0.25f, 1.f), "нет");
++                            ImVec4(0.95f, 0.76f, 0.48f, 1.f), "нет");
                  else
                      ImGui::TextColored(
 -                            ImVec4(0.3f, 1.f, 0.5f, 1.f), "yes");
@@ -503,11 +521,13 @@ index 0b16c8a..97bf28e 100644
              }
          }
  
-@@ -451,11 +451,11 @@ void GameView::render()
+@@ -450,12 +450,12 @@ void GameView::render()
+             _comppack_versions.patch.empty())
          {
              ImGui::TextColored(
-                     ImVec4(1.f, 0.9f, 0.2f, 1.f),
+-                    ImVec4(1.f, 0.9f, 0.2f, 1.f),
 -                    "Compat pack: installed (unknown version)");
++                    ImVec4(0.95f, 0.76f, 0.48f, 1.f),
 +                    "Пак совместимости: установлен (версия неизвестна)");
          }
          else if (!_comppack_versions.patch.empty())
@@ -526,6 +546,15 @@ index 0b16c8a..97bf28e 100644
              }
              ImGui::Spacing();
  
+@@ -505,7 +505,7 @@ void GameView::render()
+             }
+ 
+             ImGui::PushStyleColor(
+-                    ImGuiCol_ChildBg, ImVec4(0.05f, 0.09f, 0.18f, 1.f));
++                    ImGuiCol_ChildBg, ImVec4(0.086f, 0.082f, 0.110f, 1.f));
+             ImGui::BeginChild(
+                     "##desc", ImVec2(rc_w, 80.f), true,
+                     desc_active ? ImGuiWindowFlags_None
 @@ -530,12 +530,12 @@ void GameView::render()
              _patch_info_fetcher->get_status() ==
                      PatchInfoFetcher::Status::Found)
@@ -611,6 +640,15 @@ index 0b16c8a..97bf28e 100644
              }
  
              if (_request_focus && comment_active)
+@@ -673,7 +673,7 @@ void GameView::render()
+             }
+ 
+             ImGui::PushStyleColor(
+-                    ImGuiCol_ChildBg, ImVec4(0.05f, 0.09f, 0.18f, 1.f));
++                    ImGuiCol_ChildBg, ImVec4(0.086f, 0.082f, 0.110f, 1.f));
+             ImGui::BeginChild(
+                     "##comment_box",
+                     ImVec2(rc_w, 60.f),
 @@ -683,7 +683,7 @@ void GameView::render()
              ImGui::PushTextWrapPos(0.f);
              ImGui::TextUnformatted(
@@ -850,7 +888,7 @@ index 371910a..2c5870c 100644
  
  int pkgi_menu_is_open(void)
 diff --git a/src/pkgi.cpp b/src/pkgi.cpp
-index f051c57..6a211c4 100644
+index f051c57..8972110 100644
 --- a/src/pkgi.cpp
 +++ b/src/pkgi.cpp
 @@ -392,7 +392,7 @@ void pkgi_refresh_thread(void)
@@ -1059,7 +1097,45 @@ index f051c57..6a211c4 100644
          };
  
          LOG("PKGj started");
-@@ -1622,6 +1622,17 @@ int main()
+@@ -1599,6 +1599,37 @@ int main()
+             start_update_thread();
+ 
+         ImGui::CreateContext();
++        {
++            // Redux palette: dusk violet surfaces with a warm gold accent
++            ImVec4* c = ImGui::GetStyle().Colors;
++            const ImVec4 gold(0.95f, 0.76f, 0.48f, 1.f);
++            const ImVec4 gold_dim(0.95f, 0.76f, 0.48f, 0.35f);
++            const ImVec4 surface(0.118f, 0.110f, 0.149f, 0.96f);
++            const ImVec4 surface_hi(0.165f, 0.157f, 0.200f, 1.f);
++            c[ImGuiCol_WindowBg] = surface;
++            c[ImGuiCol_ChildBg] = ImVec4(0.086f, 0.082f, 0.110f, 1.f);
++            c[ImGuiCol_PopupBg] = surface;
++            c[ImGuiCol_Border] = ImVec4(0.29f, 0.28f, 0.34f, 1.f);
++            c[ImGuiCol_FrameBg] = surface_hi;
++            c[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.22f, 0.16f, 1.f);
++            c[ImGuiCol_FrameBgActive] = ImVec4(0.30f, 0.25f, 0.16f, 1.f);
++            c[ImGuiCol_TitleBg] = surface;
++            c[ImGuiCol_TitleBgActive] = surface_hi;
++            c[ImGuiCol_ScrollbarBg] = ImVec4(0.07f, 0.07f, 0.10f, 0.6f);
++            c[ImGuiCol_ScrollbarGrab] = gold_dim;
++            c[ImGuiCol_ScrollbarGrabHovered] = gold;
++            c[ImGuiCol_ScrollbarGrabActive] = gold;
++            c[ImGuiCol_CheckMark] = gold;
++            c[ImGuiCol_Button] = ImVec4(0.23f, 0.19f, 0.12f, 1.f);
++            c[ImGuiCol_ButtonHovered] = ImVec4(0.36f, 0.29f, 0.17f, 1.f);
++            c[ImGuiCol_ButtonActive] = ImVec4(0.48f, 0.38f, 0.21f, 1.f);
++            c[ImGuiCol_Header] = ImVec4(0.27f, 0.22f, 0.14f, 1.f);
++            c[ImGuiCol_HeaderHovered] = ImVec4(0.36f, 0.29f, 0.17f, 1.f);
++            c[ImGuiCol_HeaderActive] = ImVec4(0.48f, 0.38f, 0.21f, 1.f);
++            c[ImGuiCol_Separator] = ImVec4(0.29f, 0.28f, 0.34f, 1.f);
++            c[ImGuiCol_NavHighlight] = gold;
++            c[ImGuiCol_PlotHistogram] = gold;
++        }
+         ImGuiIO& io = ImGui::GetIO();
+         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+         io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+@@ -1622,6 +1653,17 @@ int main()
                      &merge_cfg,
                      io.Fonts->GetGlyphRangesJapanese());
          }
@@ -1077,7 +1153,7 @@ index f051c57..6a211c4 100644
  #endif
          io.Fonts->GetTexDataAsRGBA32((uint8_t**)&pixels, &width, &height);
  #ifndef PKGI_SIMULATOR
-@@ -1861,7 +1872,7 @@ int main()
+@@ -1861,7 +1903,7 @@ int main()
                      switch (mres)
                      {
                      case MenuResultSearch:
@@ -1086,7 +1162,7 @@ index f051c57..6a211c4 100644
                          break;
                      case MenuResultSearchClear:
                          search_active = 0;
-@@ -1937,7 +1948,7 @@ int main()
+@@ -1937,7 +1979,7 @@ int main()
          LOGFE("Fatal error in main loop: {}", e.what());
          state = StateError;
          pkgi_snprintf(
