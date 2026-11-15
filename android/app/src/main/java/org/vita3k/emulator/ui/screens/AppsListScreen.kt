@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.List
@@ -113,6 +114,7 @@ fun AppsListScreen(
     onOpenSettings: () -> Unit = {},
     onOpenTrophyManager: () -> Unit = {},
     onOpenUserManagement: () -> Unit = {},
+    onOpenPatches: () -> Unit = {},
     onOpenWelcomeScreen: () -> Unit = {},
     onOpenCustomConfig: (AppInfo) -> Unit = {},
     onCreateAppShortcut: (AppInfo) -> Unit = {}
@@ -202,6 +204,10 @@ fun AppsListScreen(
                                     onUserManagement = {
                                         showOverflowMenu = false
                                         onOpenUserManagement()
+                                    },
+                                    onPatches = {
+                                        showOverflowMenu = false
+                                        onOpenPatches()
                                     },
                                     onWelcomeScreen = {
                                         showOverflowMenu = false
@@ -669,6 +675,7 @@ private fun AppsListOverflowMenu(
     onRefresh: () -> Unit,
     onTrophyManager: () -> Unit,
     onUserManagement: () -> Unit,
+    onPatches: () -> Unit,
     onWelcomeScreen: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onAbout: () -> Unit
@@ -713,6 +720,16 @@ private fun AppsListOverflowMenu(
                     )
                 },
                 onClick = onUserManagement
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.apps_list_menu_patches)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = null
+                    )
+                },
+                onClick = onPatches
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.apps_list_menu_welcome)) },
