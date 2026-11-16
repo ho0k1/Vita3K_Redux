@@ -869,7 +869,7 @@ index bd5f562..634469e 100644
  }
  
 diff --git a/src/menu.cpp b/src/menu.cpp
-index 371910a..2c5870c 100644
+index 371910a..d23377e 100644
 --- a/src/menu.cpp
 +++ b/src/menu.cpp
 @@ -40,28 +40,28 @@ typedef struct
@@ -897,12 +897,13 @@ index 371910a..2c5870c 100644
 -        {MenuFilter, "Asia", DbFilterRegionASA},
 -        {MenuFilter, "Europe", DbFilterRegionEUR},
 -        {MenuFilter, "Japan", DbFilterRegionJPN},
+-        {MenuFilter, "USA", DbFilterRegionUSA},
+-        {MenuFilter, "Installed games only", DbFilterInstalled},
 +        {MenuText, "Фильтры:", 0},
 +        {MenuFilter, "Азия", DbFilterRegionASA},
 +        {MenuFilter, "Европа", DbFilterRegionEUR},
 +        {MenuFilter, "Япония", DbFilterRegionJPN},
-         {MenuFilter, "USA", DbFilterRegionUSA},
--        {MenuFilter, "Installed games only", DbFilterInstalled},
++        {MenuFilter, "США", DbFilterRegionUSA},
 +        {MenuFilter, "Только установленные", DbFilterInstalled},
  
 -        {MenuRefresh, "Refresh", 0},
