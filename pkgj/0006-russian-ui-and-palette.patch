@@ -200,7 +200,7 @@ index e73c003..954d489 100644
      }
  }
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index cba57ec..d95468f 100644
+index cba57ec..8ea2e1d 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
 @@ -40,35 +40,35 @@ ErrorInfo classify_error(const std::string& raw)
@@ -286,7 +286,37 @@ index cba57ec..d95468f 100644
  }
  
  Downloader::Downloader()
-@@ -485,7 +485,7 @@ bool Downloader::wait_retry(
+@@ -415,16 +415,20 @@ void Downloader::write_status(
+ {
+     DownloadItem cur;
+     size_t queued;
++    std::string queued_names;
+     {
+         ScopeLock _(_cond.get_mutex());
+         cur = _current_download;
+         queued = _queue.size();
++        // names of the next downloads for the Android notification
++        for (size_t i = 0; i < queued && i < 3; ++i)
++            queued_names += fmt::format("q{}={}\n", i, one_line(_queue[i].name));
+     }
+     const uint64_t offset = _download_offset.load();
+     const uint64_t total = _download_size.load();
+     const auto text = fmt::format(
+             "v=1\nstate={}\nname={}\ntype={}\npercent={}\ndone={}\n"
+-            "total={}\nqueue={}\nattempt={}\nmax={}\nkind={}\nmsg={}\nraw={}\n",
++            "total={}\nqueue={}\n{}attempt={}\nmax={}\nkind={}\nmsg={}\nraw={}\n",
+             state,
+             one_line(cur.name),
+             cur.content.empty() ? "" : type_to_string(cur.type),
+@@ -432,6 +436,7 @@ void Downloader::write_status(
+             offset,
+             total,
+             queued,
++            queued_names,
+             _attempt.load(),
+             MAX_RETRIES,
+             kind,
+@@ -485,7 +490,7 @@ bool Downloader::wait_retry(
  {
      _attempt = attempt;
      const auto status = fmt::format(
@@ -295,7 +325,7 @@ index cba57ec..d95468f 100644
      {
          ScopeLock _(_cond.get_mutex());
          _status = status;
-@@ -611,9 +611,9 @@ void Downloader::run()
+@@ -611,9 +616,9 @@ void Downloader::run()
                          item.name,
                          item.content,
                          !failure.empty()

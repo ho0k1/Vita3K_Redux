@@ -82,6 +82,7 @@ class DownloadKeepAliveService : Service() {
         val done get() = map["done"]?.toLongOrNull() ?: 0L
         val total get() = map["total"]?.toLongOrNull() ?: 0L
         val queue get() = map["queue"]?.toIntOrNull() ?: 0
+        val queuedNames get() = (0..2).mapNotNull { map["q$it"]?.takeIf(String::isNotBlank) }
         val attempt get() = map["attempt"]?.toIntOrNull() ?: 0
         val max get() = map["max"]?.toIntOrNull() ?: 5
         val age get() = map["age"]?.toLongOrNull() ?: Long.MAX_VALUE
@@ -140,12 +141,23 @@ class DownloadKeepAliveService : Service() {
     /** Text of the ongoing notification; also sets the progress bar through [progressPercent]. */
     private fun buildText(status: PkgjStatus?, now: Long): String {
         progressPercent = -1
+        queuedList = ""
         if (status == null) {
             return getString(R.string.pkgj_bg_working, mb(lastBytes - startBytes))
         }
         val title = status.name.ifBlank { getString(R.string.pkgj_bg_title) }
-        notificationTitle = title
+        notificationTitle = if (status.state == "downloading" && status.name.isNotBlank()) {
+            "$title · ${status.percent}%"
+        } else {
+            title
+        }
         val queue = if (status.queue > 0) getString(R.string.pkgj_bg_queue, status.queue) else ""
+        val next = status.queuedNames
+        queuedList = if (next.isEmpty()) "" else {
+            val more = status.queue - next.size
+            getString(R.string.pkgj_bg_next) + "\n" + next.joinToString("\n") { "• $it" } +
+                (if (more > 0) "\n" + getString(R.string.pkgj_bg_more, more) else "")
+        }
         return when (status.state) {
             "retrying" -> getString(R.string.pkgj_bg_retry, status.attempt, status.max, status.msg)
             "installing" -> getString(R.string.pkgj_bg_installing) + queue
@@ -185,6 +197,7 @@ class DownloadKeepAliveService : Service() {
     }
 
     private var progressPercent = -1
+    private var queuedList = ""
     private var notificationTitle: String? = null
 
     private fun safeBytes(): Long = runCatching { NativeLib.getNetReceivedBytes() }.getOrDefault(0L)
@@ -240,7 +253,7 @@ class DownloadKeepAliveService : Service() {
     private fun buildOngoing(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setContentTitle(notificationTitle ?: getString(R.string.pkgj_bg_title))
-        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        .setStyle(NotificationCompat.BigTextStyle().bigText(if (queuedList.isEmpty()) text else text + "\n" + queuedList))
         .setContentText(text)
         .setOngoing(true)
         .setOnlyAlertOnce(true)

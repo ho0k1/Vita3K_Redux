@@ -794,6 +794,8 @@
     <string name="pkgj_bg_cancelling">Отмена загрузок…</string>
     <string name="pkgj_resume_toast">Продолжаем незавершённые загрузки PKGj: %1$d…</string>
     <string name="pkgj_bg_progress2">%1$d%% · %2$s МБ/с</string>
+    <string name="pkgj_bg_next">Дальше:</string>
+    <string name="pkgj_bg_more">…и ещё %1$d</string>
     <string name="pkgj_bg_queue"> · ещё в очереди: %1$d</string>
     <string name="pkgj_bg_retry">Повтор %1$d/%2$d: %3$s</string>
     <string name="pkgj_bg_installing">Идёт установка… это может занять время, всё в порядке</string>
