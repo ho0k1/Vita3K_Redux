@@ -75,6 +75,8 @@ struct VKState : public renderer::State {
     int64_t vfg_last_frame_us = 0;
     double vfg_period_us = 0.0; // smoothed time between two game frames
     uint32_t vfg_generated_count = 0;
+    bool vfg_rebase_deadline = false; // set the present deadline again once the generated frame is submitted
+    uint32_t vfg_outlier_count = 0;
     OverlayRenderer overlay_renderer;
 
     // Used for memory allocation and general query later.

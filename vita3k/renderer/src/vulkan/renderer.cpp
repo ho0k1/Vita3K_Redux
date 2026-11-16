@@ -1561,10 +1561,18 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                 // measure the game frame rate, generate only for games that are not already fast
                 if (vfg_last_frame_us) {
                     const double dt = static_cast<double>(now_us - vfg_last_frame_us);
-                    if (dt > 100000.0 || dt < 4000.0)
+                    if (dt > 100000.0 || dt < 4000.0) {
                         frame_gen->reset(); // pause / stutter / not a real frame
-                    else
-                        vfg_period_us = vfg_period_us == 0.0 ? dt : vfg_period_us * 0.9 + dt * 0.1;
+                    } else if (vfg_period_us == 0.0) {
+                        vfg_period_us = dt;
+                    } else if (dt > vfg_period_us * 0.5 && dt < vfg_period_us * 2.0) {
+                        vfg_period_us = vfg_period_us * 0.9 + dt * 0.1;
+                        vfg_outlier_count = 0;
+                    } else if (++vfg_outlier_count >= 5) {
+                        // the game really changed its frame rate
+                        vfg_period_us = dt;
+                        vfg_outlier_count = 0;
+                    }
                 }
                 vfg_last_frame_us = now_us;
                 vfg_pending = false;
@@ -1584,6 +1592,7 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                         vfg_viewport = out_viewport;
                         vfg_pending = true;
                         present_deadline_us.store(now_us + static_cast<int64_t>(vfg_period_us * 0.5), std::memory_order_relaxed);
+                        vfg_rebase_deadline = true;
                         frame_gen_active = true;
                         frame_gen->timing_end(cmd, slot);
                         if (++vfg_generated_count % 300 == 0) {
@@ -1620,6 +1629,17 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
 
 void VKState::swap_window() {
     screen_renderer.swap_window();
+
+    // the generated frame is out: the real frame is due half a game frame after this moment (not after the moment
+    // the work was recorded, which would show it too early when the GPU or the display is late)
+    if (vfg_rebase_deadline) {
+        vfg_rebase_deadline = false;
+        if (vfg_pending && vfg_period_us > 0.0) {
+            const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            present_deadline_us.store(now_us + static_cast<int64_t>(vfg_period_us * 0.5), std::memory_order_relaxed);
+        }
+    }
 
     // Android asked us to give memory back!
     const int trim_level = memory_trim_level.exchange(-1, std::memory_order_relaxed);
