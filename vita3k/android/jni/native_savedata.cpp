@@ -81,15 +81,22 @@ Java_org_vita3k_emulator_NativeLib_importSaveData(JNIEnv *env, jclass, jstring s
     if (!emuenv)
         return to_jstring(env, "emulator is not running");
 
-    const fs::path src = jstring_to_string(env, src_str);
+    fs::path src = jstring_to_string(env, src_str);
+    if (src.filename_is_dot() || src.filename().empty())
+        src = src.parent_path(); // "…/PCSE00000/" has an empty file name
+    if (src.filename().empty())
+        return to_jstring(env, "bad folder");
     if (!savedata::is_encrypted(src))
         return to_jstring(env, "not an encrypted savedata folder (sce_pfs/files.db is missing)");
 
     boost::system::error_code ec;
     const fs::path root = savedata_root(*emuenv);
     fs::create_directories(root, ec);
+    const fs::path target = root / src.filename();
+    if (fs::equivalent(src, target, ec) || src.parent_path() == root)
+        return to_jstring(env, "this folder is already inside the emulator's savedata");
     std::string error;
-    if (!savedata::import_encrypted(src, root / src.filename(), nullptr, error))
+    if (!savedata::import_encrypted(src, target, nullptr, error))
         return to_jstring(env, error.empty() ? "decryption failed" : error);
     return to_jstring(env, "");
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +27,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,6 +74,7 @@ fun SaveDataScreen(onBack: () -> Unit) {
     val saves = remember { mutableStateListOf<SaveItem>() }
     var busy by remember { mutableStateOf(false) }
     var exportId by remember { mutableStateOf<String?>(null) }
+    var confirmImport by remember { mutableStateOf<String?>(null) }
 
     val msgImported = stringResource(R.string.savedata_imported)
     val msgExported = stringResource(R.string.savedata_exported)
@@ -104,7 +107,11 @@ fun SaveDataScreen(onBack: () -> Unit) {
         if (path.isNullOrBlank()) {
             scope.launch { snackbar.showSnackbar(msgBadFolder) }
         } else {
-            run({ NativeLib.importSaveData(path) }, msgImported.format(path.substringAfterLast('/')))
+            if (saves.any { it.id == path.trimEnd('/').substringAfterLast('/') }) {
+                confirmImport = path
+            } else {
+                run({ NativeLib.importSaveData(path) }, msgImported.format(path.trimEnd('/').substringAfterLast('/')))
+            }
         }
     }
 
@@ -122,6 +129,24 @@ fun SaveDataScreen(onBack: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { reload() }
+
+    confirmImport?.let { path ->
+        val name = path.trimEnd('/').substringAfterLast('/')
+        AlertDialog(
+            onDismissRequest = { confirmImport = null },
+            title = { Text(stringResource(R.string.savedata_overwrite_title)) },
+            text = { Text(stringResource(R.string.savedata_overwrite_text, name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmImport = null
+                    run({ NativeLib.importSaveData(path) }, msgImported.format(name))
+                }) { Text(stringResource(R.string.savedata_overwrite_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmImport = null }) { Text(stringResource(android.R.string.cancel)) }
+            }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AmbientBackground()

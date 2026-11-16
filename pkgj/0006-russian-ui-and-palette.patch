@@ -339,7 +339,7 @@ index cba57ec..8ea2e1d 100644
                  if (park)
                  {
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index 62dba5a..9038178 100644
+index 62dba5a..9fef704 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
 @@ -42,7 +42,7 @@ struct DownloadHistoryEntry
@@ -351,6 +351,28 @@ index 62dba5a..9038178 100644
      std::string status;
      // set when the failure can be fixed by trying again (network problems)
      std::optional<DownloadItem> retry;
+@@ -86,7 +86,7 @@ private:
+     std::deque<DownloadHistoryEntry> _history;
+ 
+     DownloadItem _current_download;
+-    bool _cancel_current = false;
++    std::atomic<bool> _cancel_current{false};
+     std::atomic<uint64_t> _download_offset = 0;
+     std::atomic<uint64_t> _download_size = 0;
+ 
+@@ -95,10 +95,10 @@ private:
+     std::atomic<int> _attempt{0};
+     std::string _last_raw; // raw exception text of the last failure, for the status file
+     std::atomic<uint32_t> _last_status_ms{0};
+-    bool _ready = false;
++    std::atomic<bool> _ready{false};
+ 
+     Thread _thread;
+-    bool _dying = false;
++    std::atomic<bool> _dying{false};
+ 
+     void save_queue_locked();
+     // the Android notification asks for a cancel through ux0:pkgj/cancel.req
 diff --git a/src/downloadsview.cpp b/src/downloadsview.cpp
 index 026946c..bf1a1b0 100644
 --- a/src/downloadsview.cpp

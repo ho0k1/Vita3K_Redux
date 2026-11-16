@@ -851,4 +851,7 @@
     <string name="savedata_exported">Экспортировано: %1$s</string>
     <string name="savedata_failed">Ошибка: %1$s</string>
     <string name="savedata_bad_folder">Не удалось определить путь к выбранной папке</string>
+    <string name="savedata_overwrite_title">Заменить сохранение?</string>
+    <string name="savedata_overwrite_text">Сохранение %1$s уже есть и будет заменено.</string>
+    <string name="savedata_overwrite_yes">Заменить</string>
 </resources>

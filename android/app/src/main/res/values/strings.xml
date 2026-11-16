@@ -843,4 +843,7 @@
     <string name="savedata_exported">Exported: %1$s</string>
     <string name="savedata_failed">Failed: %1$s</string>
     <string name="savedata_bad_folder">Cannot read the chosen folder path</string>
+    <string name="savedata_overwrite_title">Replace existing save?</string>
+    <string name="savedata_overwrite_text">The save %1$s already exists and will be replaced.</string>
+    <string name="savedata_overwrite_yes">Replace</string>
 </resources>
