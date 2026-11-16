@@ -1315,6 +1315,7 @@ void VKState::cleanup() {
     for (int i = 0; i < MAX_FRAMES_RENDERING; i++)
         frames[i].destroy_queue.destroy_objects();
 
+    frame_gen.reset();
     screen_renderer.cleanup();
 
     overlay_renderer.destroy();
@@ -1400,6 +1401,7 @@ void VKState::cleanup() {
 
 void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState &mem) {
     // we are displaying this frame, wait for a new one
+    const bool new_game_frame = should_display;
     should_display = false;
 
     DisplayFrameInfo frame;
@@ -1532,6 +1534,71 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                 vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eTransfer,
                 vk::DependencyFlags(), order_barrier, {}, {});
         }
+
+        // frame generation: show the in-between frame now and the real one half a frame later
+        bool frame_gen_active = false;
+        const bool want_vfg = frame_generation.load(std::memory_order_relaxed) && surface_handle && screen_renderer.current_cmd_buffer;
+        if (!want_vfg) {
+            if (frame_gen) {
+                frame_gen.reset();
+                vfg_pending = false;
+                present_deadline_us.store(0, std::memory_order_relaxed);
+            }
+        } else {
+            if (!frame_gen || frame_gen->swapchain_slots() != screen_renderer.swapchain_size) {
+                frame_gen.reset();
+                frame_gen = std::make_unique<FrameGenerator>(*this, screen_renderer.swapchain_size);
+                vfg_period_us = 0.0;
+                if (!frame_gen->ok())
+                    LOG_ERROR("VFG: disabled, could not initialize");
+            }
+            const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            const auto cmd = screen_renderer.current_cmd_buffer;
+            const uint32_t slot = screen_renderer.swapchain_image_idx;
+
+            if (new_game_frame && frame_gen->ok()) {
+                // measure the game frame rate, generate only for games that are not already fast
+                if (vfg_last_frame_us) {
+                    const double dt = static_cast<double>(now_us - vfg_last_frame_us);
+                    if (dt > 100000.0 || dt < 4000.0)
+                        frame_gen->reset(); // pause / stutter / not a real frame
+                    else
+                        vfg_period_us = vfg_period_us == 0.0 ? dt : vfg_period_us * 0.9 + dt * 0.1;
+                }
+                vfg_last_frame_us = now_us;
+                vfg_pending = false;
+                present_deadline_us.store(0, std::memory_order_relaxed);
+
+                if (frame_gen->push_frame(cmd, slot, surface_handle, layout, viewport)) {
+                    const Viewport out_viewport{
+                        .offset_x = 0, .offset_y = 0,
+                        .width = frame_gen->width(), .height = frame_gen->height(),
+                        .texture_width = frame_gen->width(), .texture_height = frame_gen->height()
+                    };
+                    if (frame_gen->has_pair() && vfg_period_us >= 20000.0) {
+                        surface_handle = frame_gen->generate(cmd, slot, 0.5f);
+                        layout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                        viewport = out_viewport;
+                        vfg_viewport = out_viewport;
+                        vfg_pending = true;
+                        present_deadline_us.store(now_us + static_cast<int64_t>(vfg_period_us * 0.5), std::memory_order_relaxed);
+                        frame_gen_active = true;
+                        if (++vfg_generated_count % 600 == 1)
+                            LOG_INFO("VFG: {} generated frames, game period {:.1f} ms", vfg_generated_count, vfg_period_us / 1000.0);
+                    }
+                }
+            } else if (!new_game_frame && vfg_pending && frame_gen->ok()) {
+                // the deadline passed: show the real frame from our copy
+                surface_handle = frame_gen->latest_view();
+                layout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                viewport = vfg_viewport;
+                vfg_pending = false;
+                present_deadline_us.store(0, std::memory_order_relaxed);
+                frame_gen_active = true;
+            }
+        }
+        (void)frame_gen_active;
 
         screen_renderer.render(surface_handle, layout, viewport);
     } else if (has_overlays) {
@@ -2447,6 +2514,7 @@ void VKState::wait_gpu_idle() {
 
 #ifdef __ANDROID__
 void VKState::cleanup_failed_create() {
+    frame_gen.reset();
     screen_renderer.cleanup();
 
     default_image.destroy();

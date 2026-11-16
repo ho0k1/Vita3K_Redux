@@ -22,10 +22,12 @@
 
 #include <renderer/vulkan/overlay_renderer.h>
 #include <renderer/vulkan/pipeline_cache.h>
+#include <renderer/vulkan/frame_generator.h>
 #include <renderer/vulkan/screen_renderer.h>
 #include <renderer/vulkan/surface_cache.h>
 #include <renderer/vulkan/types.h>
 
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
@@ -65,6 +67,14 @@ struct VKState : public renderer::State {
     vk::Device device;
 
     ScreenRenderer screen_renderer;
+
+    // Vita3K Redux frame generation (render thread only)
+    std::unique_ptr<FrameGenerator> frame_gen;
+    bool vfg_pending = false; // the real frame still has to be shown after the generated one
+    Viewport vfg_viewport{};
+    int64_t vfg_last_frame_us = 0;
+    double vfg_period_us = 0.0; // smoothed time between two game frames
+    uint32_t vfg_generated_count = 0;
     OverlayRenderer overlay_renderer;
 
     // Used for memory allocation and general query later.

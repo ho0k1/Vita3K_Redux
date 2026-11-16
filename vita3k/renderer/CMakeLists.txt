@@ -24,6 +24,7 @@ add_library(
 	src/vulkan/renderer.cpp
 	src/vulkan/scene.cpp
 	src/vulkan/overlay_renderer.cpp
+	src/vulkan/frame_generator.cpp
 	src/vulkan/screen_filters.cpp
 	src/vulkan/screen_renderer.cpp
 	src/vulkan/surface_cache.cpp

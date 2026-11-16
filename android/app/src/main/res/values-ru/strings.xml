@@ -865,4 +865,6 @@
     <string name="backup_restored_title">Копия восстановлена</string>
     <string name="backup_restored_text">Закройте приложение и откройте его снова, чтобы загрузились восстановленные данные.</string>
     <string name="backup_restored_close">Закрыть приложение</string>
+    <string name="settings_gpu_frame_generation">Генерация кадров (экспериментально)</string>
+    <string name="settings_gpu_frame_generation_desc">Показывает дополнительный кадр, рассчитанный между двумя кадрами игры (30 кадров выглядят как 60). Только Vulkan. Добавляет около кадра задержки, возможны артефакты на быстрых сценах, тексте и 2D-играх. Расходует время GPU.</string>
 </resources>

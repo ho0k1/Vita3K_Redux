@@ -23,6 +23,7 @@ class EmulatorConfig {
     @JvmField var vSync: Boolean = true
     @JvmField var anisotropicFiltering: Int = 1
     @JvmField var asyncPipelineCompilation: Boolean = false
+    @JvmField var frameGeneration: Boolean = false
     @JvmField var accurateThreadScheduling: Boolean = true
     @JvmField var guestCores: Int = 3
     @JvmField var exportTextures: Boolean = false
@@ -113,6 +114,7 @@ class EmulatorConfig {
         config.vSync = vSync
         config.anisotropicFiltering = anisotropicFiltering
         config.asyncPipelineCompilation = asyncPipelineCompilation
+        config.frameGeneration = frameGeneration
         config.accurateThreadScheduling = accurateThreadScheduling
         config.guestCores = guestCores
         config.exportTextures = exportTextures
@@ -195,6 +197,7 @@ class EmulatorConfig {
             vSync == other.vSync &&
             anisotropicFiltering == other.anisotropicFiltering &&
             asyncPipelineCompilation == other.asyncPipelineCompilation &&
+            frameGeneration == other.frameGeneration &&
             accurateThreadScheduling == other.accurateThreadScheduling &&
             guestCores == other.guestCores &&
             exportTextures == other.exportTextures &&
@@ -274,6 +277,7 @@ class EmulatorConfig {
         result = 31 * result + vSync.hashCode()
         result = 31 * result + anisotropicFiltering
         result = 31 * result + asyncPipelineCompilation.hashCode()
+        result = 31 * result + frameGeneration.hashCode()
         result = 31 * result + accurateThreadScheduling.hashCode()
         result = 31 * result + guestCores
         result = 31 * result + exportTextures.hashCode()

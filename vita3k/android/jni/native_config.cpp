@@ -52,6 +52,7 @@ struct EmulatorConfigFields {
     jfieldID vSync = nullptr;
     jfieldID anisotropicFiltering = nullptr;
     jfieldID asyncPipelineCompilation = nullptr;
+    jfieldID frameGeneration = nullptr;
     jfieldID accurateThreadScheduling = nullptr;
     jfieldID guestCores = nullptr;
     jfieldID exportTextures = nullptr;
@@ -140,6 +141,7 @@ EmulatorConfigFields resolve_config_fields(JNIEnv *env) {
     fields.vSync = env->GetFieldID(fields.cls, "vSync", "Z");
     fields.anisotropicFiltering = env->GetFieldID(fields.cls, "anisotropicFiltering", "I");
     fields.asyncPipelineCompilation = env->GetFieldID(fields.cls, "asyncPipelineCompilation", "Z");
+    fields.frameGeneration = env->GetFieldID(fields.cls, "frameGeneration", "Z");
     fields.accurateThreadScheduling = env->GetFieldID(fields.cls, "accurateThreadScheduling", "Z");
     fields.guestCores = env->GetFieldID(fields.cls, "guestCores", "I");
     fields.exportTextures = env->GetFieldID(fields.cls, "exportTextures", "Z");
@@ -323,6 +325,7 @@ void fill_config_object(JNIEnv *env, jobject obj, const EmulatorConfigFields &fi
     env->SetBooleanField(obj, fields.vSync, current_config.v_sync);
     env->SetIntField(obj, fields.anisotropicFiltering, static_cast<jint>(current_config.anisotropic_filtering));
     env->SetBooleanField(obj, fields.asyncPipelineCompilation, current_config.async_pipeline_compilation);
+    env->SetBooleanField(obj, fields.frameGeneration, current_config.frame_generation);
     env->SetBooleanField(obj, fields.accurateThreadScheduling, current_config.accurate_thread_scheduling);
     env->SetIntField(obj, fields.guestCores, static_cast<jint>(current_config.guest_cores));
     env->SetBooleanField(obj, fields.exportTextures, current_config.export_textures);
@@ -468,6 +471,7 @@ void read_config_object(JNIEnv *env, jobject obj, const EmulatorConfigFields &fi
     current_config.v_sync = env->GetBooleanField(obj, fields.vSync) != JNI_FALSE;
     current_config.anisotropic_filtering = static_cast<int>(env->GetIntField(obj, fields.anisotropicFiltering));
     current_config.async_pipeline_compilation = env->GetBooleanField(obj, fields.asyncPipelineCompilation) != JNI_FALSE;
+    current_config.frame_generation = env->GetBooleanField(obj, fields.frameGeneration) != JNI_FALSE;
     current_config.accurate_thread_scheduling = env->GetBooleanField(obj, fields.accurateThreadScheduling) != JNI_FALSE;
     current_config.guest_cores = static_cast<int>(env->GetIntField(obj, fields.guestCores));
     current_config.export_textures = env->GetBooleanField(obj, fields.exportTextures) != JNI_FALSE;

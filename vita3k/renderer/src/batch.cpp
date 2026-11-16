@@ -258,6 +258,11 @@ void process_batches(renderer::State &state, const FeatureState &features, MemSt
         if (state.async_flip_requested.load(std::memory_order_relaxed))
             return;
 
+        // frame generation: time to show the real frame
+        const int64_t vfg_deadline = state.present_deadline_us.load(std::memory_order_relaxed);
+        if (vfg_deadline && duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() >= vfg_deadline)
+            return;
+
         // Try to wait for a batch (about 2 or 3ms, game should be fast for this)
         auto cmd_list = state.command_buffer_queue.top(3000);
 

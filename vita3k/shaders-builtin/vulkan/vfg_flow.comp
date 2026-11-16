@@ -1,0 +1,80 @@
+// Vita3K Redux frame generation (VFG), step 2: block matching motion search on the half resolution luma images.
+// One workgroup handles one 8x8 block of the current frame and looks for its best match in the previous frame.
+// The result is stored per block as (dx, dy, best cost, cost of no motion) in half resolution pixels (current -> previous).
+// Copyright (C) 2026 Vita3K team, GPLv2 or any later version.
+
+#version 450
+
+#define BLOCK 8
+#define RANGE 8
+#define CANDIDATES ((2 * RANGE + 1) * (2 * RANGE + 1))
+
+layout(local_size_x = BLOCK, local_size_y = BLOCK) in;
+
+layout(binding = 0) uniform sampler2D prev_luma;
+layout(binding = 1) uniform sampler2D cur_luma;
+layout(binding = 2, rgba16f) uniform writeonly image2D dst_flow;
+
+shared float cur_block[BLOCK * BLOCK];
+shared float best_cost[BLOCK * BLOCK];
+shared int best_index[BLOCK * BLOCK];
+shared float zero_cost_shared[BLOCK * BLOCK];
+
+float prev_at(ivec2 p, ivec2 size) {
+    return texelFetch(prev_luma, clamp(p, ivec2(0), size - 1), 0).r;
+}
+
+void main() {
+    ivec2 size = textureSize(cur_luma, 0);
+    ivec2 block_pos = ivec2(gl_WorkGroupID.xy) * BLOCK;
+    uint tid = gl_LocalInvocationIndex;
+
+    cur_block[tid] = texelFetch(cur_luma, clamp(block_pos + ivec2(gl_LocalInvocationID.xy), ivec2(0), size - 1), 0).r;
+    barrier();
+
+    float my_best = 1e9;
+    int my_index = 0;
+    float my_zero = 0.0;
+    for (uint cand = tid; cand < CANDIDATES; cand += BLOCK * BLOCK) {
+        ivec2 d = ivec2(int(cand) % (2 * RANGE + 1) - RANGE, int(cand) / (2 * RANGE + 1) - RANGE);
+        float sad = 0.0;
+        for (int y = 0; y < BLOCK; y++) {
+            for (int x = 0; x < BLOCK; x++) {
+                sad += abs(prev_at(block_pos + ivec2(x, y) + d, size) - cur_block[y * BLOCK + x]);
+            }
+        }
+        if (d == ivec2(0))
+            my_zero = sad;
+        // slight preference for small vectors so flat areas do not wander
+        float cost = sad + 0.02 * float(abs(d.x) + abs(d.y));
+        if (cost < my_best) {
+            my_best = cost;
+            my_index = int(cand);
+        }
+    }
+    best_cost[tid] = my_best;
+    best_index[tid] = my_index;
+    zero_cost_shared[tid] = my_zero;
+    barrier();
+
+    for (uint stride = BLOCK * BLOCK / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            if (best_cost[tid + stride] < best_cost[tid]) {
+                best_cost[tid] = best_cost[tid + stride];
+                best_index[tid] = best_index[tid + stride];
+            }
+            zero_cost_shared[tid] += zero_cost_shared[tid + stride];
+        }
+        barrier();
+    }
+
+    if (tid == 0) {
+        int cand = best_index[0];
+        vec2 mv = vec2(cand % (2 * RANGE + 1) - RANGE, cand / (2 * RANGE + 1) - RANGE);
+        float zero_cost = zero_cost_shared[0];
+        // the vector must clearly beat no motion, otherwise keep the block still
+        if (!(best_cost[0] < 0.8 * zero_cost))
+            mv = vec2(0.0);
+        imageStore(dst_flow, ivec2(gl_WorkGroupID.xy), vec4(mv, best_cost[0], zero_cost));
+    }
+}

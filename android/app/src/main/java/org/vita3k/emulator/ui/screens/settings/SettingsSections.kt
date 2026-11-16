@@ -549,6 +549,16 @@ private fun GpuSettingsSection(
                     onShowHelp = onShowHelp
                 )
                 SettingsToggleRow(
+                    title = stringResource(R.string.settings_gpu_frame_generation),
+                    checked = cfg.frameGeneration,
+                    onCheckedChange = { onUpdate { frameGeneration = it } },
+                    help = SettingsHelpEntry(
+                        title = stringResource(R.string.settings_gpu_frame_generation),
+                        body = stringResource(R.string.settings_gpu_frame_generation_desc)
+                    ),
+                    onShowHelp = onShowHelp
+                )
+                SettingsToggleRow(
                     title = stringResource(R.string.settings_gpu_async_pipeline),
                     checked = cfg.asyncPipelineCompilation,
                     onCheckedChange = { onUpdate { asyncPipelineCompilation = it } },

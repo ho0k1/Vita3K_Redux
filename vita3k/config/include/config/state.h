@@ -80,6 +80,7 @@ struct Config {
         bool v_sync = true;
         int anisotropic_filtering = 1;
         bool async_pipeline_compilation = false;
+        bool frame_generation = false;
         bool accurate_thread_scheduling = true;
         int preempt_on_wake_us = 1000;
         int guest_cores = 3;

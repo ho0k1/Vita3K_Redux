@@ -857,4 +857,6 @@
     <string name="backup_restored_title">Backup restored</string>
     <string name="backup_restored_text">Close the app and open it again so the restored data is loaded.</string>
     <string name="backup_restored_close">Close the app</string>
+    <string name="settings_gpu_frame_generation">Frame generation (experimental)</string>
+    <string name="settings_gpu_frame_generation_desc">Shows an extra frame computed between two game frames (30 FPS looks like 60). Vulkan only. Adds about one frame of delay and can show artifacts on fast scenes, text and 2D games. Uses extra GPU time.</string>
 </resources>

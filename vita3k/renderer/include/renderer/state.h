@@ -134,6 +134,10 @@ struct State {
     bool should_display;
 
     std::atomic<bool> async_flip_requested{ false };
+    // Vita3K Redux frame generation (VFG): show an interpolated frame between two game frames (Vulkan only)
+    std::atomic<bool> frame_generation{ false };
+    // steady clock microseconds, 0 = none; process_batches returns once it has passed so a held back frame can be presented
+    std::atomic<int64_t> present_deadline_us{ 0 };
     std::atomic<int> pending_vsync{ -1 };
 
     std::unique_ptr<std::thread> render_thread;
