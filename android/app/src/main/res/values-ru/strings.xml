@@ -169,7 +169,6 @@
     <!-- About sheet -->
     <string name="about_build">Сборка: %1$s</string>
     <string name="about_revision">Ревизия: %1$s</string>
-    <string name="about_legal_notice">Vita3K не поддерживает пиратство. Вы должны сделать дамп своих игр самостоятельно.</string>
 
     <!-- Updates -->
     <string name="updates_check_title">Проверка обновлений</string>
@@ -854,4 +853,6 @@
     <string name="savedata_overwrite_title">Заменить сохранение?</string>
     <string name="savedata_overwrite_text">Сохранение %1$s уже есть и будет заменено.</string>
     <string name="savedata_overwrite_yes">Заменить</string>
+    <string name="about_description_html"><![CDATA[Vita3K Redux — эмулятор PS Vita и PS TV для Android со встроенным PKGj, новым оформлением и исправлениями для Android-устройств. Основан на открытых проектах <a href="https://github.com/Vita3K/Vita3K">Vita3K</a> и Vita3K Plus и распространяется по лицензии GPLv2.]]></string>
+    <string name="about_footer_html"><![CDATA[<a href="https://vita3k.org">Vita3K</a> | <a href="https://github.com/Vita3K/Vita3K">GitHub</a> | <a href="https://github.com/blastrock/pkgj">PKGj</a>]]></string>
 </resources>
