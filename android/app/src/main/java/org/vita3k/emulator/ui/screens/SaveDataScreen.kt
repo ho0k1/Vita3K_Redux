@@ -50,6 +50,7 @@ import kotlinx.coroutines.withContext
 import org.vita3k.emulator.NativeLib
 import org.vita3k.emulator.R
 import org.vita3k.emulator.StorageAccess
+import org.vita3k.emulator.data.BackupManager
 import org.vita3k.emulator.ui.components.AmbientBackground
 
 private class SaveItem(val id: String, val canExport: Boolean, val encrypted: Boolean)
@@ -75,11 +76,14 @@ fun SaveDataScreen(onBack: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var exportId by remember { mutableStateOf<String?>(null) }
     var confirmImport by remember { mutableStateOf<String?>(null) }
+    var confirmRestore by remember { mutableStateOf<android.net.Uri?>(null) }
+    var restartNeeded by remember { mutableStateOf(false) }
 
     val msgImported = stringResource(R.string.savedata_imported)
     val msgExported = stringResource(R.string.savedata_exported)
     val msgFailed = stringResource(R.string.savedata_failed)
     val msgBadFolder = stringResource(R.string.savedata_bad_folder)
+    val msgBackupSaved = stringResource(R.string.backup_saved)
 
     fun reload() {
         scope.launch {
@@ -128,7 +132,71 @@ fun SaveDataScreen(onBack: () -> Unit) {
         }
     }
 
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) confirmRestore = uri
+    }
+
+    fun backup() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            val text = try {
+                msgBackupSaved.format(BackupManager.exportToDownloads(context))
+            } catch (e: Exception) {
+                msgFailed.format(e.message ?: e.javaClass.simpleName)
+            }
+            busy = false
+            snackbar.showSnackbar(text)
+        }
+    }
+
+    fun restore(uri: android.net.Uri) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                BackupManager.restore(context, uri)
+                restartNeeded = true
+            } catch (e: Exception) {
+                snackbar.showSnackbar(msgFailed.format(e.message ?: e.javaClass.simpleName))
+            }
+            busy = false
+            reload()
+        }
+    }
+
     LaunchedEffect(Unit) { reload() }
+
+    confirmRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { confirmRestore = null },
+            title = { Text(stringResource(R.string.backup_restore_title)) },
+            text = { Text(stringResource(R.string.backup_restore_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestore = null
+                    restore(uri)
+                }) { Text(stringResource(R.string.backup_restore_yes)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestore = null }) { Text(stringResource(android.R.string.cancel)) }
+            }
+        )
+    }
+
+    if (restartNeeded) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.backup_restored_title)) },
+            text = { Text(stringResource(R.string.backup_restored_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    // the settings in memory would overwrite the restored files on a normal exit
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }) { Text(stringResource(R.string.backup_restored_close)) }
+            }
+        )
+    }
 
     confirmImport?.let { path ->
         val name = path.trimEnd('/').substringAfterLast('/')
@@ -192,6 +260,23 @@ fun SaveDataScreen(onBack: () -> Unit) {
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.savedata_import)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { backup() },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) { Text(stringResource(R.string.backup_create)) }
+                    OutlinedButton(
+                        onClick = { restoreLauncher.launch(arrayOf("application/zip", "application/octet-stream")) },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) { Text(stringResource(R.string.backup_restore)) }
+                }
+                Text(
+                    text = stringResource(R.string.backup_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(
                     text = stringResource(R.string.savedata_export_hint),
                     style = MaterialTheme.typography.bodyMedium,

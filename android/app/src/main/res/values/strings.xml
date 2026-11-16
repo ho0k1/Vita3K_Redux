@@ -831,7 +831,7 @@
     <string name="patches_save_failed">Failed to save the patch settings.</string>
     <string name="patches_download_failed">Could not download the patch list: %1$s</string>
     <string name="apps_list_menu_savedata">Save data</string>
-    <string name="savedata_title">Save data</string>
+    <string name="savedata_title">Save data and backup</string>
     <string name="savedata_import">Import from PS Vita folder</string>
     <string name="savedata_import_hint">Choose a savedata folder copied from a PS Vita (it contains sce_pfs and sce_sys). It is decrypted into the current user.</string>
     <string name="savedata_export_hint">Tap Export to write a save in the PS Vita encrypted format into a folder you choose. Only saves that came from a PS Vita can be exported.</string>
@@ -847,4 +847,14 @@
     <string name="savedata_overwrite_yes">Replace</string>
     <string name="about_description_html"><![CDATA[Vita3K Redux is a PS Vita and PS TV emulator for Android with a built-in PKGj, a new look and fixes for Android devices. It is based on the open source <a href="https://github.com/Vita3K/Vita3K">Vita3K</a> and Vita3K Plus projects and is distributed under the GPLv2 license.]]></string>
     <string name="about_footer_html"><![CDATA[<a href="https://vita3k.org">Vita3K</a> | <a href="https://github.com/Vita3K/Vita3K">GitHub</a> | <a href="https://github.com/blastrock/pkgj">PKGj</a>]]></string>
+    <string name="backup_create">Backup to Downloads</string>
+    <string name="backup_restore">Restore backup</string>
+    <string name="backup_hint">A backup holds settings, per-game configs, game patches, users, save data and trophies. Games and firmware are not included.</string>
+    <string name="backup_saved">Backup saved: %1$s</string>
+    <string name="backup_restore_title">Restore backup?</string>
+    <string name="backup_restore_text">Settings, users and saves from the file replace the current ones. The app will close afterwards.</string>
+    <string name="backup_restore_yes">Restore</string>
+    <string name="backup_restored_title">Backup restored</string>
+    <string name="backup_restored_text">Close the app and open it again so the restored data is loaded.</string>
+    <string name="backup_restored_close">Close the app</string>
 </resources>

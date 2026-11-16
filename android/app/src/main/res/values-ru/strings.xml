@@ -839,7 +839,7 @@
     <string name="patches_save_failed">Не удалось сохранить настройки патчей.</string>
     <string name="patches_download_failed">Не удалось скачать список патчей: %1$s</string>
     <string name="apps_list_menu_savedata">Сохранения</string>
-    <string name="savedata_title">Сохранения</string>
+    <string name="savedata_title">Сохранения и копия</string>
     <string name="savedata_import">Импорт из папки PS Vita</string>
     <string name="savedata_import_hint">Выберите папку сохранения, скопированную с PS Vita (в ней sce_pfs и sce_sys). Она будет расшифрована для текущего пользователя.</string>
     <string name="savedata_export_hint">Нажмите «Экспорт», чтобы записать сохранение в зашифрованном формате PS Vita в выбранную папку. Экспортируются только сохранения, пришедшие с PS Vita.</string>
@@ -855,4 +855,14 @@
     <string name="savedata_overwrite_yes">Заменить</string>
     <string name="about_description_html"><![CDATA[Vita3K Redux — эмулятор PS Vita и PS TV для Android со встроенным PKGj, новым оформлением и исправлениями для Android-устройств. Основан на открытых проектах <a href="https://github.com/Vita3K/Vita3K">Vita3K</a> и Vita3K Plus и распространяется по лицензии GPLv2.]]></string>
     <string name="about_footer_html"><![CDATA[<a href="https://vita3k.org">Vita3K</a> | <a href="https://github.com/Vita3K/Vita3K">GitHub</a> | <a href="https://github.com/blastrock/pkgj">PKGj</a>]]></string>
+    <string name="backup_create">Копия в Загрузки</string>
+    <string name="backup_restore">Восстановить копию</string>
+    <string name="backup_hint">В копию входят настройки, конфиги игр, патчи игр, пользователи, сохранения и трофеи. Игры и прошивка не входят.</string>
+    <string name="backup_saved">Копия сохранена: %1$s</string>
+    <string name="backup_restore_title">Восстановить копию?</string>
+    <string name="backup_restore_text">Настройки, пользователи и сохранения из файла заменят текущие. После этого приложение закроется.</string>
+    <string name="backup_restore_yes">Восстановить</string>
+    <string name="backup_restored_title">Копия восстановлена</string>
+    <string name="backup_restored_text">Закройте приложение и откройте его снова, чтобы загрузились восстановленные данные.</string>
+    <string name="backup_restored_close">Закрыть приложение</string>
 </resources>
