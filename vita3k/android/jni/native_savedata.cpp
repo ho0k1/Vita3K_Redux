@@ -19,6 +19,7 @@
 
 #include "android_state.h"
 
+#include <io/state.h>
 #include <packages/savedata.h>
 #include <util/fs.h>
 #include <util/log.h>
