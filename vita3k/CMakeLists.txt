@@ -168,6 +168,7 @@ if(ANDROID)
 		android/jni/native_users.cpp
 		android/jni/native_apps.cpp
 		android/jni/native_patches.cpp
+		android/jni/native_savedata.cpp
 		android/jni/native_trophies.cpp
 		android/jni/native_install.cpp
 		android/jni/native_session.cpp

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.List
@@ -115,6 +116,7 @@ fun AppsListScreen(
     onOpenTrophyManager: () -> Unit = {},
     onOpenUserManagement: () -> Unit = {},
     onOpenPatches: () -> Unit = {},
+    onOpenSaveData: () -> Unit = {},
     onOpenWelcomeScreen: () -> Unit = {},
     onOpenCustomConfig: (AppInfo) -> Unit = {},
     onCreateAppShortcut: (AppInfo) -> Unit = {}
@@ -208,6 +210,10 @@ fun AppsListScreen(
                                     onPatches = {
                                         showOverflowMenu = false
                                         onOpenPatches()
+                                    },
+                                    onSaveData = {
+                                        showOverflowMenu = false
+                                        onOpenSaveData()
                                     },
                                     onWelcomeScreen = {
                                         showOverflowMenu = false
@@ -676,6 +682,7 @@ private fun AppsListOverflowMenu(
     onTrophyManager: () -> Unit,
     onUserManagement: () -> Unit,
     onPatches: () -> Unit,
+    onSaveData: () -> Unit,
     onWelcomeScreen: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onAbout: () -> Unit
@@ -730,6 +737,16 @@ private fun AppsListOverflowMenu(
                     )
                 },
                 onClick = onPatches
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.apps_list_menu_savedata)) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = null
+                    )
+                },
+                onClick = onSaveData
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.apps_list_menu_welcome)) },

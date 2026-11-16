@@ -829,4 +829,16 @@
     <string name="patches_invalid">The downloaded patch list is not valid.</string>
     <string name="patches_save_failed">Failed to save the patch settings.</string>
     <string name="patches_download_failed">Could not download the patch list: %1$s</string>
+    <string name="apps_list_menu_savedata">Save data</string>
+    <string name="savedata_title">Save data</string>
+    <string name="savedata_import">Import from PS Vita folder</string>
+    <string name="savedata_import_hint">Choose a savedata folder copied from a PS Vita (it contains sce_pfs and sce_sys). It is decrypted into the current user.</string>
+    <string name="savedata_export_hint">Tap Export to write a save in the PS Vita encrypted format into a folder you choose. Only saves that came from a PS Vita can be exported.</string>
+    <string name="savedata_empty">No save data for the current user.</string>
+    <string name="savedata_export">Export</string>
+    <string name="savedata_no_export">Cannot export: no sealedkey</string>
+    <string name="savedata_imported">Imported: %1$s</string>
+    <string name="savedata_exported">Exported: %1$s</string>
+    <string name="savedata_failed">Failed: %1$s</string>
+    <string name="savedata_bad_folder">Cannot read the chosen folder path</string>
 </resources>

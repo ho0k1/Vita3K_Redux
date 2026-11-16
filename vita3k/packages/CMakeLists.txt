@@ -3,12 +3,14 @@ add_library(packages STATIC
             src/license.cpp
             src/pkg.cpp
             src/pup.cpp
+            src/savedata.cpp
             src/sce_utils.cpp
             src/sfo.cpp
             include/packages/exfat.h
             include/packages/license.h
             include/packages/functions.h
             include/packages/pkg.h
+            include/packages/savedata.h
             include/packages/sce_types.h
             include/packages/sfo.h
 )

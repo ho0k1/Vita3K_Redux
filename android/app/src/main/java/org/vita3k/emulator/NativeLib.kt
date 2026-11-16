@@ -58,6 +58,14 @@ object NativeLib {
     /** Stores a downloaded patchlist.xml. Returns the patch count, -1 when it is invalid, -2 when it cannot be saved. */
     external fun importPatchList(xml: String): Int
 
+    // --- Savedata import/export (PS Vita encrypted format) ---
+    /** Flat array, 3 strings per save folder: id, "1" when exportable, "1" when still encrypted. */
+    external fun listSaveData(): Array<String>
+    /** Decrypts a savedata folder copied from a Vita into the current user's savedata. Returns "" or an error. */
+    external fun importSaveData(srcPath: String): String
+    /** Encrypts savedata [saveId] into dstDir/saveId. Returns "" or an error. */
+    external fun exportSaveData(saveId: String, dstDir: String): String
+
     // --- Trophies ---
     /** Returns all trophy collections visible to the active user. */
     external fun getTrophyCollections(): Array<NativeTrophyCollection>?
