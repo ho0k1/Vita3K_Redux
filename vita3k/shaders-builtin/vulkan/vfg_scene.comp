@@ -1,0 +1,46 @@
+// Vita3K Redux frame generation (VFG): scene change detection.
+// Averages the best block matching error of the motion search over the whole frame. A scene cut (or a fade, a menu
+// switch...) cannot be matched by any motion, so the error is high everywhere and the interpolation is skipped.
+// Output (one pixel): x = mean error per pixel with the best motion, y = mean error per pixel with no motion.
+// Copyright (C) 2026 Vita3K team, GPLv2 or any later version.
+
+#version 450
+
+layout(local_size_x = 64) in;
+
+layout(binding = 0) uniform sampler2D flow;
+layout(binding = 1, rgba16f) uniform writeonly image2D dst_scene;
+
+shared float best_sum[64];
+shared float zero_sum[64];
+
+void main() {
+    ivec2 size = textureSize(flow, 0);
+    int count = size.x * size.y;
+    uint tid = gl_LocalInvocationIndex;
+
+    float best = 0.0;
+    float zero = 0.0;
+    for (int i = int(tid); i < count; i += 64) {
+        vec4 f = texelFetch(flow, ivec2(i % size.x, i / size.x), 0);
+        best += f.z;
+        zero += f.w;
+    }
+    best_sum[tid] = best;
+    zero_sum[tid] = zero;
+    barrier();
+
+    for (uint stride = 32; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            best_sum[tid] += best_sum[tid + stride];
+            zero_sum[tid] += zero_sum[tid + stride];
+        }
+        barrier();
+    }
+
+    if (tid == 0) {
+        // every block has 8x8 pixels
+        float norm = 1.0 / (float(count) * 64.0);
+        imageStore(dst_scene, ivec2(0), vec4(best_sum[0] * norm, zero_sum[0] * norm, 0.0, 1.0));
+    }
+}

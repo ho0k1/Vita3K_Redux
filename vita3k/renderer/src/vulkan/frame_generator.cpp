@@ -59,17 +59,21 @@ FrameGenerator::~FrameGenerator() {
 
     device.destroy(capture_pipeline);
     device.destroy(flow_pipeline);
+    device.destroy(scene_pipeline);
     device.destroy(interp_pipeline);
     device.destroy(capture_pipeline_layout);
     device.destroy(flow_pipeline_layout);
+    device.destroy(scene_pipeline_layout);
     device.destroy(interp_pipeline_layout);
     device.destroy(query_pool);
     device.destroy(descriptor_pool);
     device.destroy(capture_layout);
     device.destroy(flow_layout);
+    device.destroy(scene_layout);
     device.destroy(interp_layout);
     device.destroy(capture_shader);
     device.destroy(flow_shader);
+    device.destroy(scene_shader);
     device.destroy(interp_shader);
     device.destroy(sampler);
 }
@@ -89,8 +93,9 @@ bool FrameGenerator::create_pipelines() {
     const fs::path shaders_path = state.static_assets / "shaders-builtin/vulkan";
     capture_shader = vkutil::load_shader(device, shaders_path / "vfg_capture.comp.spv");
     flow_shader = vkutil::load_shader(device, shaders_path / "vfg_flow.comp.spv");
+    scene_shader = vkutil::load_shader(device, shaders_path / "vfg_scene.comp.spv");
     interp_shader = vkutil::load_shader(device, shaders_path / "vfg_interp.comp.spv");
-    if (!capture_shader || !flow_shader || !interp_shader) {
+    if (!capture_shader || !flow_shader || !scene_shader || !interp_shader) {
         LOG_ERROR("VFG: could not load the frame generation shaders");
         return false;
     }
@@ -100,13 +105,16 @@ bool FrameGenerator::create_pipelines() {
 
     const std::array capture_bindings = { binding(0, sampled), binding(1, storage), binding(2, storage) };
     const std::array flow_bindings = { binding(0, sampled), binding(1, sampled), binding(2, storage) };
-    const std::array interp_bindings = { binding(0, sampled), binding(1, sampled), binding(2, sampled), binding(3, storage) };
+    const std::array scene_bindings = { binding(0, sampled), binding(1, storage) };
+    const std::array interp_bindings = { binding(0, sampled), binding(1, sampled), binding(2, sampled), binding(3, storage), binding(4, sampled) };
 
     vk::DescriptorSetLayoutCreateInfo layout_info{};
     layout_info.setBindings(capture_bindings);
     capture_layout = device.createDescriptorSetLayout(layout_info);
     layout_info.setBindings(flow_bindings);
     flow_layout = device.createDescriptorSetLayout(layout_info);
+    layout_info.setBindings(scene_bindings);
+    scene_layout = device.createDescriptorSetLayout(layout_info);
     layout_info.setBindings(interp_bindings);
     interp_layout = device.createDescriptorSetLayout(layout_info);
 
@@ -118,10 +126,10 @@ bool FrameGenerator::create_pipelines() {
     }
 
     const uint32_t capture_count = swapchain_size;
-    const uint32_t total_sets = capture_count + 4;
+    const uint32_t total_sets = capture_count + 5;
     const std::array pool_sizes = {
-        vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, capture_count + 2 * 2 + 2 * 3 },
-        vk::DescriptorPoolSize{ vk::DescriptorType::eStorageImage, capture_count * 2 + 2 + 2 },
+        vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler, capture_count + 2 * 2 + 2 * 4 + 1 + 4 },
+        vk::DescriptorPoolSize{ vk::DescriptorType::eStorageImage, capture_count * 2 + 2 + 2 + 1 + 2 },
     };
     vk::DescriptorPoolCreateInfo pool_info{ .maxSets = total_sets };
     pool_info.setPoolSizes(pool_sizes);
@@ -139,6 +147,12 @@ bool FrameGenerator::create_pipelines() {
         flow_sets[i] = device.allocateDescriptorSets(alloc)[0];
         alloc.setSetLayouts(interp_layout);
         interp_sets[i] = device.allocateDescriptorSets(alloc)[0];
+    }
+
+    {
+        vk::DescriptorSetAllocateInfo alloc{ .descriptorPool = descriptor_pool };
+        alloc.setSetLayouts(scene_layout);
+        scene_set = device.allocateDescriptorSets(alloc)[0];
     }
 
     auto make_pipeline = [&](vk::DescriptorSetLayout set_layout, uint32_t push_size, vk::ShaderModule shader, vk::PipelineLayout &layout_out, vk::Pipeline &pipeline_out) {
@@ -164,6 +178,7 @@ bool FrameGenerator::create_pipelines() {
 
     return make_pipeline(capture_layout, sizeof(CaptureConstants), capture_shader, capture_pipeline_layout, capture_pipeline)
         && make_pipeline(flow_layout, 0, flow_shader, flow_pipeline_layout, flow_pipeline)
+        && make_pipeline(scene_layout, 0, scene_shader, scene_pipeline_layout, scene_pipeline)
         && make_pipeline(interp_layout, sizeof(InterpConstants), interp_shader, interp_pipeline_layout, interp_pipeline);
 }
 
@@ -173,6 +188,7 @@ void FrameGenerator::destroy_images() {
     for (auto &img : luma)
         img.destroy();
     flow.destroy();
+    scene.destroy();
     output.destroy();
 }
 
@@ -204,6 +220,10 @@ void FrameGenerator::create_images(uint32_t width, uint32_t height) {
     flow.height = blocks_h;
     flow.format = vk::Format::eR16G16B16A16Sfloat;
     flow.init_image(usage);
+    scene.width = 1;
+    scene.height = 1;
+    scene.format = vk::Format::eR16G16B16A16Sfloat;
+    scene.init_image(usage);
     output.width = width;
     output.height = height;
     output.format = vk::Format::eR8G8B8A8Unorm;
@@ -215,8 +235,8 @@ void FrameGenerator::create_images(uint32_t width, uint32_t height) {
 void FrameGenerator::write_static_descriptors() {
     std::vector<vk::DescriptorImageInfo> infos;
     std::vector<vk::WriteDescriptorSet> writes;
-    infos.reserve(32);
-    writes.reserve(32);
+    infos.reserve(48);
+    writes.reserve(48);
 
     auto add = [&](vk::DescriptorSet set, uint32_t binding_index, vk::DescriptorType type, const vkutil::Image &img) {
         const bool is_storage = type == vk::DescriptorType::eStorageImage;
@@ -236,7 +256,10 @@ void FrameGenerator::write_static_descriptors() {
         add(interp_sets[i], 1, vk::DescriptorType::eCombinedImageSampler, color[i]);
         add(interp_sets[i], 2, vk::DescriptorType::eCombinedImageSampler, flow);
         add(interp_sets[i], 3, vk::DescriptorType::eStorageImage, output);
+        add(interp_sets[i], 4, vk::DescriptorType::eCombinedImageSampler, scene);
     }
+    add(scene_set, 0, vk::DescriptorType::eCombinedImageSampler, flow);
+    add(scene_set, 1, vk::DescriptorType::eStorageImage, scene);
     for (size_t i = 0; i < writes.size(); i++)
         writes[i].setImageInfo(infos[i]);
     state.device.updateDescriptorSets(writes, {});
@@ -295,6 +318,12 @@ vk::ImageView FrameGenerator::generate(vk::CommandBuffer cmd, uint32_t slot, flo
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, flow_pipeline_layout, 0, flow_sets[cur], {});
     cmd.dispatch(flow.width, flow.height, 1); // one work group per block
     flow.transition_to(cmd, vkutil::ImageLayout::SampledImage);
+
+    scene.transition_to_discard(cmd, vkutil::ImageLayout::StorageImage);
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, scene_pipeline);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, scene_pipeline_layout, 0, scene_set, {});
+    cmd.dispatch(1, 1, 1);
+    scene.transition_to(cmd, vkutil::ImageLayout::SampledImage);
 
     output.transition_to_discard(cmd, vkutil::ImageLayout::StorageImage);
     InterpConstants constants{};

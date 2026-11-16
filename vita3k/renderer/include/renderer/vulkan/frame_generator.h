@@ -82,10 +82,10 @@ private:
     uint32_t cur = 0;
 
     vk::Sampler sampler;
-    vk::ShaderModule capture_shader, flow_shader, interp_shader;
-    vk::DescriptorSetLayout capture_layout, flow_layout, interp_layout;
-    vk::PipelineLayout capture_pipeline_layout, flow_pipeline_layout, interp_pipeline_layout;
-    vk::Pipeline capture_pipeline, flow_pipeline, interp_pipeline;
+    vk::ShaderModule capture_shader, flow_shader, scene_shader, interp_shader;
+    vk::DescriptorSetLayout capture_layout, flow_layout, scene_layout, interp_layout;
+    vk::PipelineLayout capture_pipeline_layout, flow_pipeline_layout, scene_pipeline_layout, interp_pipeline_layout;
+    vk::Pipeline capture_pipeline, flow_pipeline, scene_pipeline, interp_pipeline;
     vk::QueryPool query_pool;
     std::vector<uint8_t> query_armed; // per slot, a measurement was recorded and not read yet
     float timestamp_period_ns = 0.0f;
@@ -96,11 +96,13 @@ private:
     std::vector<vk::DescriptorSet> capture_sets;
     // [history index of the latest frame]
     std::array<vk::DescriptorSet, 2> flow_sets;
+    vk::DescriptorSet scene_set;
     std::array<vk::DescriptorSet, 2> interp_sets;
 
     std::array<vkutil::Image, 2> color;
     std::array<vkutil::Image, 2> luma;
     vkutil::Image flow;
+    vkutil::Image scene; // 1x1, scene change error
     vkutil::Image output;
 
     bool create_pipelines();
