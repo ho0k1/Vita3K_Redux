@@ -282,7 +282,7 @@ bool is_u5u5u5u1(const SceGxmTextureFormat format);
 void convert_u5u5u5u1_to_u1u5u5u5(void *dest, const void *data, const uint32_t width, const uint32_t height);
 void convert_u1u5u5u5_to_u5u5u5u1(void *dest, const void *data, const uint32_t width, const uint32_t height);
 
-void void swizzled_texture_to_linear_texture(uint8_t *dest, const uint8_t *src, uint16_t width, uint16_t height, uint8_t bits_per_pixel);
+void swizzled_texture_to_linear_texture(uint8_t *dest, const uint8_t *src, uint16_t width, uint16_t height, uint8_t bits_per_pixel);
 void tiled_texture_to_linear_texture(uint8_t *dest, const uint8_t *src, uint16_t width, uint16_t height, uint8_t bits_per_pixel);
 
 uint16_t get_upload_mip(const uint16_t true_mip, const uint16_t width, const uint16_t height);
