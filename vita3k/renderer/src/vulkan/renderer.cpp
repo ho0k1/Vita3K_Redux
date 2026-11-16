@@ -1570,6 +1570,7 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                 vfg_pending = false;
                 present_deadline_us.store(0, std::memory_order_relaxed);
 
+                frame_gen->timing_begin(cmd, slot);
                 if (frame_gen->push_frame(cmd, slot, surface_handle, layout, viewport)) {
                     const Viewport out_viewport{
                         .offset_x = 0, .offset_y = 0,
@@ -1584,8 +1585,11 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                         vfg_pending = true;
                         present_deadline_us.store(now_us + static_cast<int64_t>(vfg_period_us * 0.5), std::memory_order_relaxed);
                         frame_gen_active = true;
-                        if (++vfg_generated_count % 600 == 1)
-                            LOG_INFO("VFG: {} generated frames, game period {:.1f} ms", vfg_generated_count, vfg_period_us / 1000.0);
+                        frame_gen->timing_end(cmd, slot);
+                        if (++vfg_generated_count % 300 == 0) {
+                            const float gpu_ms = frame_gen->take_average_gpu_ms();
+                            LOG_INFO("VFG: {} generated frames, game period {:.1f} ms, VFG GPU time {:.2f} ms", vfg_generated_count, vfg_period_us / 1000.0, gpu_ms);
+                        }
                     }
                 }
             } else if (!new_game_frame && vfg_pending && frame_gen->ok()) {

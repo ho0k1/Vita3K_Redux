@@ -63,6 +63,7 @@ FrameGenerator::~FrameGenerator() {
     device.destroy(capture_pipeline_layout);
     device.destroy(flow_pipeline_layout);
     device.destroy(interp_pipeline_layout);
+    device.destroy(query_pool);
     device.destroy(descriptor_pool);
     device.destroy(capture_layout);
     device.destroy(flow_layout);
@@ -108,6 +109,13 @@ bool FrameGenerator::create_pipelines() {
     flow_layout = device.createDescriptorSetLayout(layout_info);
     layout_info.setBindings(interp_bindings);
     interp_layout = device.createDescriptorSetLayout(layout_info);
+
+    timestamp_period_ns = state.physical_device_properties.limits.timestampPeriod;
+    if (timestamp_period_ns > 0.0f && state.physical_device_properties.limits.timestampComputeAndGraphics) {
+        vk::QueryPoolCreateInfo query_info{ .queryType = vk::QueryType::eTimestamp, .queryCount = swapchain_size * 2 };
+        query_pool = device.createQueryPool(query_info);
+        query_armed.assign(swapchain_size, 0);
+    }
 
     const uint32_t capture_count = swapchain_size;
     const uint32_t total_sets = capture_count + 4;
@@ -299,6 +307,40 @@ vk::ImageView FrameGenerator::generate(vk::CommandBuffer cmd, uint32_t slot, flo
     cmd.dispatch((img_width + 7) / 8, (img_height + 7) / 8, 1);
     output.transition_to(cmd, vkutil::ImageLayout::SampledImage);
     return output.view;
+}
+
+void FrameGenerator::timing_begin(vk::CommandBuffer cmd, uint32_t slot) {
+    if (!query_pool || slot >= swapchain_size)
+        return;
+    // read the result of the last measurement of this slot (its frame is finished, the slot fence was waited)
+    if (query_armed[slot]) {
+        std::array<uint64_t, 2> ticks{};
+        const auto result = state.device.getQueryPoolResults(query_pool, slot * 2, 2, sizeof(ticks), ticks.data(),
+            sizeof(uint64_t), vk::QueryResultFlagBits::e64);
+        if (result == vk::Result::eSuccess && ticks[1] >= ticks[0]) {
+            gpu_ms_sum += static_cast<double>(ticks[1] - ticks[0]) * timestamp_period_ns * 1e-6;
+            gpu_ms_count++;
+        }
+        query_armed[slot] = 0;
+    }
+    cmd.resetQueryPool(query_pool, slot * 2, 2);
+    cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, query_pool, slot * 2);
+}
+
+void FrameGenerator::timing_end(vk::CommandBuffer cmd, uint32_t slot) {
+    if (!query_pool || slot >= swapchain_size)
+        return;
+    cmd.writeTimestamp(vk::PipelineStageFlagBits::eComputeShader, query_pool, slot * 2 + 1);
+    query_armed[slot] = 1;
+}
+
+float FrameGenerator::take_average_gpu_ms() {
+    if (!gpu_ms_count)
+        return 0.0f;
+    const float avg = static_cast<float>(gpu_ms_sum / gpu_ms_count);
+    gpu_ms_sum = 0.0;
+    gpu_ms_count = 0;
+    return avg;
 }
 
 vk::ImageView FrameGenerator::latest_view() {

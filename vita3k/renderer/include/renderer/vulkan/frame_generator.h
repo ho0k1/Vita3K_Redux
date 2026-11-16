@@ -61,6 +61,12 @@ public:
     uint32_t width() const { return img_width; }
     uint32_t height() const { return img_height; }
 
+    // GPU time measurement of the capture + flow + interpolation work of one presented frame
+    void timing_begin(vk::CommandBuffer cmd, uint32_t slot);
+    void timing_end(vk::CommandBuffer cmd, uint32_t slot);
+    // average GPU time in ms of the measured frames since the last call (0 if nothing was measured)
+    float take_average_gpu_ms();
+
     // forget the history (scene change, pause, resize...)
     void reset() { frames_pushed = 0; }
 
@@ -80,6 +86,11 @@ private:
     vk::DescriptorSetLayout capture_layout, flow_layout, interp_layout;
     vk::PipelineLayout capture_pipeline_layout, flow_pipeline_layout, interp_pipeline_layout;
     vk::Pipeline capture_pipeline, flow_pipeline, interp_pipeline;
+    vk::QueryPool query_pool;
+    std::vector<uint8_t> query_armed; // per slot, a measurement was recorded and not read yet
+    float timestamp_period_ns = 0.0f;
+    double gpu_ms_sum = 0.0;
+    uint32_t gpu_ms_count = 0;
     vk::DescriptorPool descriptor_pool;
     // [swapchain slot]
     std::vector<vk::DescriptorSet> capture_sets;
