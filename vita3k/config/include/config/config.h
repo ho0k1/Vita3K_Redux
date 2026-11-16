@@ -164,12 +164,12 @@ using PhysicalKeyCode = input::PhysicalKeyCode;
     code(float, "resolution-multiplier", 1.0f, resolution_multiplier)                                   \
     code(bool, "disable-surface-sync", false, disable_surface_sync)                                      \
     code(bool, "surface-sync-clamp-rt", true, surface_sync_clamp_rt)                               \
-    code(std::string, "screen-filter", "Bilinear", screen_filter)                                       \
+    code(std::string, "screen-filter", "VSS", screen_filter)                                            \
     code(bool, "v-sync", true, v_sync)                                                                  \
     code(int, "anisotropic-filtering", 1, anisotropic_filtering)                                        \
     code(bool, "texture-cache", true, texture_cache)                                                    \
     code(bool, "async-pipeline-compilation", false, async_pipeline_compilation)                          \
-    code(bool, "frame-generation", false, frame_generation)                                              \
+    code(bool, "frame-generation", true, frame_generation)                                               \
     code(bool, "accurate-thread-scheduling", true, accurate_thread_scheduling)                          \
     code(int, "preempt-on-wake-us", 1000, preempt_on_wake_us)                                             \
     code(int, "guest-cores", 3, guest_cores)  /* the Vita gives an application three of its four cores */ \

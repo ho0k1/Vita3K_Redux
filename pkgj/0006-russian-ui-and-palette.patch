@@ -200,7 +200,7 @@ index e73c003..954d489 100644
      }
  }
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index cba57ec..8ea2e1d 100644
+index cba57ec..fd0a740 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
 @@ -40,35 +40,35 @@ ErrorInfo classify_error(const std::string& raw)
@@ -338,6 +338,16 @@ index cba57ec..8ea2e1d 100644
                          std::nullopt};
                  if (park)
                  {
+@@ -624,6 +629,9 @@ void Downloader::run()
+                 while (_history.size() > 20)
+                     _history.pop_front();
+             }
++            // this download is over: it must not stay in the queue file while we wait for the next one
++            // (otherwise it is downloaded again at every start)
++            _current_download = {};
+             save_queue_locked();
+         }
+         if (failure.empty() && !_dying)
 diff --git a/src/downloader.hpp b/src/downloader.hpp
 index 62dba5a..9fef704 100644
 --- a/src/downloader.hpp

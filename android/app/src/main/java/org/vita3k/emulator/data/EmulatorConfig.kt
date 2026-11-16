@@ -18,12 +18,12 @@ class EmulatorConfig {
     @JvmField var highAccuracy: Boolean = true
     @JvmField var resolutionMultiplier: Float = 1.0f
     @JvmField var disableSurfaceSync: Boolean = false
-    @JvmField var screenFilter: String = "Bilinear"
+    @JvmField var screenFilter: String = "VSS"
     @JvmField var memoryMapping: String = "page-table"
     @JvmField var vSync: Boolean = true
     @JvmField var anisotropicFiltering: Int = 1
     @JvmField var asyncPipelineCompilation: Boolean = false
-    @JvmField var frameGeneration: Boolean = false
+    @JvmField var frameGeneration: Boolean = true
     @JvmField var accurateThreadScheduling: Boolean = true
     @JvmField var guestCores: Int = 3
     @JvmField var exportTextures: Boolean = false

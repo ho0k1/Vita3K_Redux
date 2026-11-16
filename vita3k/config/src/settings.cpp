@@ -205,7 +205,7 @@ bool load_custom_config(Config::CurrentConfig &out, const fs::path &config_path,
         out.v_sync = gpu.attribute("v-sync").as_bool();
         out.anisotropic_filtering = gpu.attribute("anisotropic-filtering").as_int();
         out.async_pipeline_compilation = gpu.attribute("async-pipeline-compilation").as_bool();
-        out.frame_generation = gpu.attribute("frame-generation").as_bool();
+        out.frame_generation = gpu.attribute("frame-generation").as_bool(true);
         out.accurate_thread_scheduling = gpu.attribute("accurate-thread-scheduling").as_bool(true);
         out.preempt_on_wake_us = gpu.attribute("preempt-on-wake-us").as_int(1000);
         out.guest_cores = gpu.attribute("guest-cores").as_int(out.guest_cores);

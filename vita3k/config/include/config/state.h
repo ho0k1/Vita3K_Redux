@@ -75,12 +75,12 @@ struct Config {
         bool high_accuracy = true;
         float resolution_multiplier = 1.0f;
         bool disable_surface_sync = false;
-        std::string screen_filter = "Bilinear";
+        std::string screen_filter = "VSS";
         std::string memory_mapping = VITA3K_DEFAULT_MEMORY_MAPPING;
         bool v_sync = true;
         int anisotropic_filtering = 1;
         bool async_pipeline_compilation = false;
-        bool frame_generation = false;
+        bool frame_generation = true;
         bool accurate_thread_scheduling = true;
         int preempt_on_wake_us = 1000;
         int guest_cores = 3;
