@@ -132,6 +132,21 @@ public:
     }
 };
 
+// VSS: Vita3K Redux upscaler, a single pass edge-aware upscale and sharpen (after Snapdragon Game Super Resolution 1)
+class VSSScreenFilter : public SinglePassScreenFilter {
+protected:
+    std::string_view get_fragment_name() override;
+    vk::Sampler create_sampler() override;
+
+public:
+    VSSScreenFilter(ScreenRenderer &screen)
+        : SinglePassScreenFilter(screen) {}
+
+    std::string_view get_name() override {
+        return "VSS";
+    }
+};
+
 class FSRScreenFilter : public ScreenFilter {
 private:
     // dst of the easu shader, src of the rcas shader

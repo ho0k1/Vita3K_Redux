@@ -405,7 +405,7 @@
     <string name="settings_gpu_guest_cores">Гостевые ядра процессора</string>
     <string name="settings_gpu_guest_cores_desc">Сколько гостевых потоков с обычной привязкой к ядрам могут работать одновременно при включённом точном планировании. PS Vita даёт играм три ядра, поэтому по умолчанию 3.\nНекоторые игры падают при загрузке, если их потоки идут параллельно (например, Sonic &amp; All-Stars Racing Transformed): поставьте 1 в их своих настройках, это исправит падение ценой производительности.</string>
     <string name="settings_gpu_screen_filter">Фильтр экрана</string>
-    <string name="settings_gpu_screen_filter_desc">Выберите итоговый фильтр изображения.</string>
+    <string name="settings_gpu_screen_filter_desc">Выберите итоговый фильтр изображения. VSS — резкий апскейлер с учётом контуров для Vulkan (по мотивам Snapdragon Game Super Resolution), лёгкий для GPU Adreno.</string>
     <string name="settings_gpu_resolution">Масштабирование внутреннего разрешения</string>
     <string name="settings_gpu_resolution_desc">Увеличивает разрешение игры в заданное число раз.\nЭкспериментально: корректный рендеринг при масштабе больше 1x не гарантируется.</string>
     <string name="settings_gpu_resolution_val">%1$d×%2$d (%3$s×)</string>
