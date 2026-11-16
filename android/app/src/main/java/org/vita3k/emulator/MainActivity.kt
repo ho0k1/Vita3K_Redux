@@ -106,6 +106,45 @@ class MainActivity : AppCompatActivity() {
         dispatchFolderResult(selectedPath)
     }
 
+    // notifications first, then the battery exemption (system dialogs must not overlap)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { askBatteryExemption() }
+
+    private fun startupPermissionAsks(key: String): Int =
+        getSharedPreferences("startup_permissions", MODE_PRIVATE).getInt(key, 0)
+
+    private fun countStartupPermissionAsk(key: String) {
+        val prefs = getSharedPreferences("startup_permissions", MODE_PRIVATE)
+        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
+    }
+
+    // asked at the start while they are missing; a person who keeps saying no is left alone after three times
+    private fun askStartupPermissions() {
+        val notificationsOk = androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled()
+        if (!notificationsOk && Build.VERSION.SDK_INT >= 33 && startupPermissionAsks("notifications") < 3) {
+            countStartupPermissionAsk("notifications")
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            askBatteryExemption()
+        }
+    }
+
+    private fun askBatteryExemption() {
+        val ignoring = runCatching {
+            (getSystemService(POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(packageName)
+        }.getOrDefault(true)
+        if (ignoring || startupPermissionAsks("battery") >= 3) return
+        countStartupPermissionAsk("battery")
+        val request = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            .setData(android.net.Uri.parse("package:$packageName"))
+        try {
+            startActivity(request)
+        } catch (_: Exception) {
+            // no such screen on this device: the settings section still has the button
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -119,6 +158,10 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null && !pkgjResumeChecked && intent?.action == Intent.ACTION_MAIN) {
             pkgjResumeChecked = true
             Handler(Looper.getMainLooper()).postDelayed({ resumePkgjQueueIfAny() }, 1500)
+        }
+
+        if (savedInstanceState == null && intent?.action == Intent.ACTION_MAIN) {
+            Handler(Looper.getMainLooper()).postDelayed({ if (!isFinishing) askStartupPermissions() }, 800)
         }
 
         setContent {

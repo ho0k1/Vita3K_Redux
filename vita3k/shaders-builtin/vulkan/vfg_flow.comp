@@ -1,13 +1,20 @@
 // Vita3K Redux frame generation (VFG), step 2: block matching motion search on the half resolution luma images.
 // One workgroup handles one 8x8 block of the current frame and looks for its best match in the previous frame.
+// The search is hierarchical: a coarse pass on a 2x downsampled version of the block covers +-16 pixels, then a fine
+// pass at full luma resolution refines the result by +-2 pixels. Compared to a full +-8 search this finds twice as
+// fast movement for a third of the cost.
 // The result is stored per block as (dx, dy, best cost, cost of no motion) in half resolution pixels (current -> previous).
 // Copyright (C) 2026 Vita3K team, GPLv2 or any later version.
 
 #version 450
 
 #define BLOCK 8
-#define RANGE 8
-#define CANDIDATES ((2 * RANGE + 1) * (2 * RANGE + 1))
+#define COARSE_RANGE 8
+#define COARSE_SIDE (2 * COARSE_RANGE + 1)
+#define COARSE_CANDIDATES (COARSE_SIDE * COARSE_SIDE)
+#define FINE_RANGE 2
+#define FINE_SIDE (2 * FINE_RANGE + 1)
+#define FINE_CANDIDATES (FINE_SIDE * FINE_SIDE)
 
 layout(local_size_x = BLOCK, local_size_y = BLOCK) in;
 
@@ -16,37 +23,61 @@ layout(binding = 1) uniform sampler2D cur_luma;
 layout(binding = 2, rgba16f) uniform writeonly image2D dst_flow;
 
 shared float cur_block[BLOCK * BLOCK];
+shared float cur_coarse[(BLOCK / 2) * (BLOCK / 2)];
 shared float best_cost[BLOCK * BLOCK];
 shared int best_index[BLOCK * BLOCK];
-shared float zero_cost_shared[BLOCK * BLOCK];
+shared ivec2 predicted;
+shared float zero_cost_shared;
 
 float prev_at(ivec2 p, ivec2 size) {
     return texelFetch(prev_luma, clamp(p, ivec2(0), size - 1), 0).r;
 }
 
+// average of the 2x2 luma pixels that start at p (p is even in the block grid), filtered by the sampler
+float coarse_prev(ivec2 p, vec2 inv_size) {
+    return texture(prev_luma, (vec2(p) + 1.0) * inv_size).r;
+}
+
+void reduce_min() {
+    uint tid = gl_LocalInvocationIndex;
+    barrier();
+    for (uint stride = BLOCK * BLOCK / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            if (best_cost[tid + stride] < best_cost[tid]) {
+                best_cost[tid] = best_cost[tid + stride];
+                best_index[tid] = best_index[tid + stride];
+            }
+        }
+        barrier();
+    }
+}
+
 void main() {
     ivec2 size = textureSize(cur_luma, 0);
+    vec2 inv_size = 1.0 / vec2(size);
     ivec2 block_pos = ivec2(gl_WorkGroupID.xy) * BLOCK;
     uint tid = gl_LocalInvocationIndex;
 
     cur_block[tid] = texelFetch(cur_luma, clamp(block_pos + ivec2(gl_LocalInvocationID.xy), ivec2(0), size - 1), 0).r;
+    if (tid < (BLOCK / 2) * (BLOCK / 2)) {
+        ivec2 c = ivec2(int(tid) % (BLOCK / 2), int(tid) / (BLOCK / 2));
+        cur_coarse[tid] = texture(cur_luma, (vec2(block_pos + c * 2) + 1.0) * inv_size).r;
+    }
     barrier();
 
+    // coarse pass: vectors are multiples of 2 pixels
     float my_best = 1e9;
     int my_index = 0;
-    float my_zero = 0.0;
-    for (uint cand = tid; cand < CANDIDATES; cand += BLOCK * BLOCK) {
-        ivec2 d = ivec2(int(cand) % (2 * RANGE + 1) - RANGE, int(cand) / (2 * RANGE + 1) - RANGE);
+    for (uint cand = tid; cand < COARSE_CANDIDATES; cand += BLOCK * BLOCK) {
+        ivec2 d = ivec2(int(cand) % COARSE_SIDE - COARSE_RANGE, int(cand) / COARSE_SIDE - COARSE_RANGE) * 2;
         float sad = 0.0;
-        for (int y = 0; y < BLOCK; y++) {
-            for (int x = 0; x < BLOCK; x++) {
-                sad += abs(prev_at(block_pos + ivec2(x, y) + d, size) - cur_block[y * BLOCK + x]);
+        for (int y = 0; y < BLOCK / 2; y++) {
+            for (int x = 0; x < BLOCK / 2; x++) {
+                sad += abs(coarse_prev(block_pos + ivec2(x, y) * 2 + d, inv_size) - cur_coarse[y * (BLOCK / 2) + x]);
             }
         }
-        if (d == ivec2(0))
-            my_zero = sad;
-        // slight preference for small vectors so flat areas do not wander
-        float cost = sad + 0.02 * float(abs(d.x) + abs(d.y));
+        // 16 samples stand for 64 pixels, small vectors are preferred
+        float cost = sad * 4.0 + 0.02 * float(abs(d.x) + abs(d.y));
         if (cost < my_best) {
             my_best = cost;
             my_index = int(cand);
@@ -54,27 +85,44 @@ void main() {
     }
     best_cost[tid] = my_best;
     best_index[tid] = my_index;
-    zero_cost_shared[tid] = my_zero;
+    reduce_min();
+    if (tid == 0) {
+        int cand = best_index[0];
+        predicted = ivec2(cand % COARSE_SIDE - COARSE_RANGE, cand / COARSE_SIDE - COARSE_RANGE) * 2;
+    }
     barrier();
 
-    for (uint stride = BLOCK * BLOCK / 2; stride > 0; stride >>= 1) {
-        if (tid < stride) {
-            if (best_cost[tid + stride] < best_cost[tid]) {
-                best_cost[tid] = best_cost[tid + stride];
-                best_index[tid] = best_index[tid + stride];
+    // fine pass: candidate FINE_CANDIDATES is the zero vector (needed to know if the motion is worth anything)
+    my_best = 1e9;
+    my_index = 0;
+    if (tid <= FINE_CANDIDATES) {
+        ivec2 d = ivec2(0);
+        if (tid < FINE_CANDIDATES)
+            d = predicted + ivec2(int(tid) % FINE_SIDE - FINE_RANGE, int(tid) / FINE_SIDE - FINE_RANGE);
+        float sad = 0.0;
+        for (int y = 0; y < BLOCK; y++) {
+            for (int x = 0; x < BLOCK; x++) {
+                sad += abs(prev_at(block_pos + ivec2(x, y) + d, size) - cur_block[y * BLOCK + x]);
             }
-            zero_cost_shared[tid] += zero_cost_shared[tid + stride];
         }
-        barrier();
+        if (tid == FINE_CANDIDATES)
+            zero_cost_shared = sad;
+        else {
+            my_best = sad + 0.02 * float(abs(d.x) + abs(d.y));
+            my_index = int(tid);
+        }
     }
+    best_cost[tid] = my_best;
+    best_index[tid] = my_index;
+    reduce_min();
 
     if (tid == 0) {
         int cand = best_index[0];
-        vec2 mv = vec2(cand % (2 * RANGE + 1) - RANGE, cand / (2 * RANGE + 1) - RANGE);
-        float zero_cost = zero_cost_shared[0];
+        vec2 mv = vec2(predicted + ivec2(cand % FINE_SIDE - FINE_RANGE, cand / FINE_SIDE - FINE_RANGE));
+        float zero_cost = zero_cost_shared;
         // the vector must clearly beat no motion, otherwise keep the block still
         if (!(best_cost[0] < 0.8 * zero_cost))
             mv = vec2(0.0);
-        imageStore(dst_flow, ivec2(gl_WorkGroupID.xy), vec4(mv, best_cost[0], zero_cost));
+        imageStore(dst_flow, ivec2(gl_WorkGroupID.xy), vec4(mv, min(best_cost[0], zero_cost), zero_cost));
     }
 }

@@ -846,7 +846,7 @@
     <string name="savedata_overwrite_text">The save %1$s already exists and will be replaced.</string>
     <string name="savedata_overwrite_yes">Replace</string>
     <string name="about_description_html"><![CDATA[Vita3K Redux is a PS Vita and PS TV emulator for Android with a built-in PKGj, a new look and fixes for Android devices. It is based on the open source <a href="https://github.com/Vita3K/Vita3K">Vita3K</a> and Vita3K Plus projects and is distributed under the GPLv2 license.]]></string>
-    <string name="about_footer_html"><![CDATA[<a href="https://vita3k.org">Vita3K</a> | <a href="https://github.com/Vita3K/Vita3K">GitHub</a> | <a href="https://github.com/blastrock/pkgj">PKGj</a>]]></string>
+    <string name="about_footer_html"><![CDATA[<a href="https://vita3k.org">Vita3K</a> | <a href="https://github.com/nckstwrt/Vita3K-Plus">Vita3K Plus</a> | <a href="https://github.com/blastrock/pkgj">PKGj</a>]]></string>
     <string name="backup_create">Backup to Downloads</string>
     <string name="backup_restore">Restore backup</string>
     <string name="backup_hint">A backup holds settings, per-game configs, game patches, users, save data and trophies. Games and firmware are not included.</string>
