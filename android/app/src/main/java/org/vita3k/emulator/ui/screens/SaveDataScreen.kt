@@ -158,7 +158,9 @@ fun SaveDataScreen(onBack: () -> Unit) {
                 BackupManager.restore(context, uri)
                 restartNeeded = true
             } catch (e: Exception) {
-                snackbar.showSnackbar(msgFailed.format(e.message ?: e.javaClass.simpleName))
+                // files may have been replaced already: the running app must not keep the old state and write it back
+                if (BackupManager.restoreTouchedFiles) restartNeeded = true
+                else snackbar.showSnackbar(msgFailed.format(e.message ?: e.javaClass.simpleName))
             }
             busy = false
             reload()

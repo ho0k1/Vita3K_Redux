@@ -1401,8 +1401,13 @@ void VKState::cleanup() {
 
 void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState &mem) {
     // we are displaying this frame, wait for a new one
-    const bool new_game_frame = should_display;
+    const bool display_requested = should_display;
     should_display = false;
+    // pause and common dialog redraws also request a display, only the frame counter tells the real game frames apart
+    const uint64_t game_frame_serial = game_frame_counter.load(std::memory_order_relaxed);
+    const bool new_game_frame = display_requested && game_frame_serial != vfg_last_serial;
+    if (display_requested)
+        vfg_last_serial = game_frame_serial;
 
     DisplayFrameInfo frame;
     {
@@ -1418,11 +1423,22 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
         overlay_manager->unlock_shared();
     }
 
-    if (!frame.base && !has_overlays)
-        return;
+    // frame generation: whenever this call does not get to present, the deadline must not stay armed,
+    // process_batches would return before every batch for as long as it is in the past
+    auto drop_vfg_pending = [this]() {
+        vfg_pending = false;
+        present_deadline_us.store(0, std::memory_order_relaxed);
+    };
 
-    if (!screen_renderer.acquire_swapchain_image())
+    if (!frame.base && !has_overlays) {
+        drop_vfg_pending();
         return;
+    }
+
+    if (!screen_renderer.acquire_swapchain_image()) {
+        drop_vfg_pending();
+        return;
+    }
 
     // store viewport for touch
     {
@@ -1531,13 +1547,16 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                 .dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eMemoryRead
             };
             screen_renderer.current_cmd_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
-                vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eTransfer,
+                vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eComputeShader,
                 vk::DependencyFlags(), order_barrier, {}, {});
         }
 
         // frame generation: show the in-between frame now and the real one half a frame later
         bool frame_gen_active = false;
-        const bool want_vfg = frame_generation.load(std::memory_order_relaxed) && surface_handle && screen_renderer.current_cmd_buffer;
+        const bool vfg_option = frame_generation.load(std::memory_order_relaxed);
+        if (!vfg_option)
+            vfg_failed = false;
+        const bool want_vfg = vfg_option && !vfg_failed && surface_handle && screen_renderer.current_cmd_buffer;
         if (!want_vfg) {
             if (frame_gen) {
                 frame_gen.reset();
@@ -1547,11 +1566,23 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
         } else {
             if (!frame_gen || frame_gen->swapchain_slots() != screen_renderer.swapchain_size) {
                 frame_gen.reset();
-                frame_gen = std::make_unique<FrameGenerator>(*this, screen_renderer.swapchain_size);
+                drop_vfg_pending();
                 vfg_period_us = 0.0;
-                if (!frame_gen->ok())
+                try {
+                    frame_gen = std::make_unique<FrameGenerator>(*this, screen_renderer.swapchain_size);
+                } catch (const std::exception &e) {
+                    // an optional feature must not take the renderer down
+                    LOG_ERROR("VFG: disabled, could not initialize: {}", e.what());
+                    frame_gen.reset();
+                }
+                if (frame_gen && !frame_gen->ok()) {
                     LOG_ERROR("VFG: disabled, could not initialize");
+                    frame_gen.reset();
+                }
+                if (!frame_gen)
+                    vfg_failed = true;
             }
+            if (frame_gen) {
             const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count();
             const auto cmd = screen_renderer.current_cmd_buffer;
@@ -1601,14 +1632,23 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                         }
                     }
                 }
-            } else if (!new_game_frame && vfg_pending && frame_gen->ok()) {
-                // the deadline passed: show the real frame from our copy
-                surface_handle = frame_gen->latest_view();
+            } else if (!new_game_frame && vfg_pending && frame_gen->ok() && frame_gen->width() == vfg_viewport.width && frame_gen->height() == vfg_viewport.height) {
+                // a redraw without a new game frame: the real frame is shown only once its time has come,
+                // before that the generated frame stays on the screen
+                const int64_t deadline = present_deadline_us.load(std::memory_order_relaxed);
+                if (deadline && now_us < deadline) {
+                    surface_handle = frame_gen->generated_view();
+                } else {
+                    surface_handle = frame_gen->latest_view();
+                    vfg_pending = false;
+                    present_deadline_us.store(0, std::memory_order_relaxed);
+                }
                 layout = vk::ImageLayout::eShaderReadOnlyOptimal;
                 viewport = vfg_viewport;
-                vfg_pending = false;
-                present_deadline_us.store(0, std::memory_order_relaxed);
                 frame_gen_active = true;
+            } else if (!new_game_frame && vfg_pending) {
+                drop_vfg_pending();
+            }
             }
         }
         (void)frame_gen_active;

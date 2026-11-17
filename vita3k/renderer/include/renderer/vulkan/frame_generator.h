@@ -57,6 +57,8 @@ public:
 
     // copy of the latest pushed frame, sampled with eShaderReadOnlyOptimal
     vk::ImageView latest_view();
+    // the last generated frame, sampled with eShaderReadOnlyOptimal
+    vk::ImageView generated_view() { return output.view; }
 
     uint32_t width() const { return img_width; }
     uint32_t height() const { return img_height; }

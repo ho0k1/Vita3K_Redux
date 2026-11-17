@@ -167,6 +167,7 @@ private:
 
     bool is_ok = false;
 
+    void init_smaa();
     bool upload_lookup_textures();
     void create_images(uint32_t width, uint32_t height);
     void destroy_images();

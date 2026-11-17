@@ -102,6 +102,7 @@ COMMAND(new_frame) {
         display->next_rendered_frame = *next_frame;
         delete next_frame;
 
+        renderer.game_frame_counter.fetch_add(1, std::memory_order_relaxed);
         renderer.should_display = true;
     }
 

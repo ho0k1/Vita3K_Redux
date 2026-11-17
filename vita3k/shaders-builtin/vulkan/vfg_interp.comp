@@ -33,7 +33,9 @@ void main() {
     }
     vec2 inv_size = 1.0 / vec2(c.size);
     // flow is in half resolution luma pixels, the colors are in full resolution pixels
-    vec2 own_mv = texture(flow, uv).xy * 2.0;
+    // one flow texel per 16x16 pixels, the sampling position has to be in block units (the flow texture is rounded up)
+    vec2 flow_uv = (vec2(pos) + 0.5) / (16.0 * vec2(textureSize(flow, 0)));
+    vec2 own_mv = texture(flow, flow_uv).xy * 2.0;
 
     vec3 a = texture(prev_color, uv + own_mv * c.t * inv_size).rgb;
     vec3 b = texture(cur_color, uv - own_mv * (1.0 - c.t) * inv_size).rgb;

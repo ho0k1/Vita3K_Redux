@@ -111,6 +111,10 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { askBatteryExemption() }
 
+    private val batteryExemptionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { resumeAfterStartupPermissions() }
+
     private fun startupPermissionAsks(key: String): Int =
         getSharedPreferences("startup_permissions", MODE_PRIVATE).getInt(key, 0)
 
@@ -130,18 +134,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // the saved PKGj queue goes on only after the permission dialogs are closed (the PKGj screen would cover them)
+    private fun resumeAfterStartupPermissions() {
+        if (isFinishing || isDestroyed) return
+        resumePkgjQueueIfAny()
+    }
+
     private fun askBatteryExemption() {
         val ignoring = runCatching {
             (getSystemService(POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(packageName)
         }.getOrDefault(true)
-        if (ignoring || startupPermissionAsks("battery") >= 3) return
+        if (ignoring || startupPermissionAsks("battery") >= 3) {
+            resumeAfterStartupPermissions()
+            return
+        }
         countStartupPermissionAsk("battery")
         val request = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
             .setData(android.net.Uri.parse("package:$packageName"))
         try {
-            startActivity(request)
+            batteryExemptionLauncher.launch(request)
         } catch (_: Exception) {
             // no such screen on this device: the settings section still has the button
+            resumeAfterStartupPermissions()
         }
     }
 
@@ -155,13 +169,14 @@ class MainActivity : AppCompatActivity() {
         appsListViewModel.initialize(storagePath)
 
         // unfinished PKGj downloads (saved queue) continue by themselves when the app is opened
+        // (after the permission requests, see askStartupPermissions)
         if (savedInstanceState == null && !pkgjResumeChecked && intent?.action == Intent.ACTION_MAIN) {
             pkgjResumeChecked = true
-            Handler(Looper.getMainLooper()).postDelayed({ resumePkgjQueueIfAny() }, 1500)
-        }
-
-        if (savedInstanceState == null && intent?.action == Intent.ACTION_MAIN) {
-            Handler(Looper.getMainLooper()).postDelayed({ if (!isFinishing) askStartupPermissions() }, 800)
+            Handler(Looper.getMainLooper()).postDelayed({
+                // the activity may be gone (rotation right after the start): a destroyed activity must not launch anything
+                if (!isFinishing && !isDestroyed && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
+                    askStartupPermissions()
+            }, 800)
         }
 
         setContent {

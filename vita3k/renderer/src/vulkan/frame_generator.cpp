@@ -49,7 +49,12 @@ vk::DescriptorSetLayoutBinding binding(uint32_t index, vk::DescriptorType type) 
 FrameGenerator::FrameGenerator(VKState &state, uint32_t swapchain_size)
     : state(state)
     , swapchain_size(swapchain_size) {
-    is_ok = create_pipelines();
+    try {
+        is_ok = create_pipelines();
+    } catch (const std::exception &e) {
+        LOG_ERROR("VFG: could not create the pipelines: {}", e.what());
+        is_ok = false;
+    }
 }
 
 FrameGenerator::~FrameGenerator() {
@@ -270,7 +275,16 @@ bool FrameGenerator::push_frame(vk::CommandBuffer cmd, uint32_t slot, vk::ImageV
         return false;
 
     if (viewport.width != img_width || viewport.height != img_height) {
-        create_images(viewport.width, viewport.height);
+        try {
+            create_images(viewport.width, viewport.height);
+        } catch (const std::exception &e) {
+            // out of memory: the generator stays off, the game keeps running
+            LOG_ERROR("VFG: disabled, could not create the images: {}", e.what());
+            destroy_images();
+            img_width = img_height = 0;
+            is_ok = false;
+            return false;
+        }
         frames_pushed = 0;
         cur = 1; // becomes 0 below
     }

@@ -77,6 +77,8 @@ struct VKState : public renderer::State {
     uint32_t vfg_generated_count = 0;
     bool vfg_rebase_deadline = false; // set the present deadline again once the generated frame is submitted
     uint32_t vfg_outlier_count = 0;
+    uint64_t vfg_last_serial = 0;
+    bool vfg_failed = false; // the generator could not be created, do not try again until the option is toggled
     OverlayRenderer overlay_renderer;
 
     // Used for memory allocation and general query later.

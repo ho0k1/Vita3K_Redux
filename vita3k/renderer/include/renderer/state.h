@@ -139,6 +139,8 @@ struct State {
     std::atomic<bool> frame_generation{ false };
     // steady clock microseconds, 0 = none; process_batches returns once it has passed so a held back frame can be presented
     std::atomic<int64_t> present_deadline_us{ 0 };
+    // incremented for every new game frame (display redraws of a paused game do not count)
+    std::atomic<uint64_t> game_frame_counter{ 0 };
     std::atomic<int> pending_vsync{ -1 };
 
     std::unique_ptr<std::thread> render_thread;

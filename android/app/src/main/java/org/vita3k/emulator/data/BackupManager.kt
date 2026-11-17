@@ -15,7 +15,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
+import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
@@ -34,79 +34,133 @@ internal object BackupManager {
         return File(vitaPath).parentFile ?: error("Storage folder not found")
     }
 
-    /** Creates the zip in Downloads and returns its name. */
+    /** Creates the zip in Downloads and returns its name. A failed export leaves no half written file behind. */
     suspend fun exportToDownloads(context: Context): String = withContext(Dispatchers.IO) {
         val storage = storageDir()
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val name = "Vita3K-backup-$stamp.zip"
         var count = 0
-        openDownloadsStream(context, name).use { out ->
-            ZipOutputStream(out.buffered()).use { zip ->
-                zip.putNextEntry(ZipEntry(MARKER))
-                zip.write("Vita3K Redux backup\nversion=${NativeLib.getAppVersion()}\ntime=${Date()}\n".toByteArray())
-                zip.closeEntry()
-                for (root in roots) {
-                    val file = File(storage, root)
-                    if (!file.exists()) continue
-                    file.walkTopDown().filter { it.isFile }.forEach { f ->
-                        val entry = f.relativeTo(storage).invariantSeparatorsPath
-                        zip.putNextEntry(ZipEntry(entry))
-                        f.inputStream().use { it.copyTo(zip) }
-                        zip.closeEntry()
-                        count++
+        val target = createDownloadsTarget(context, name)
+        var done = false
+        try {
+            target.open().use { out ->
+                ZipOutputStream(out.buffered()).use { zip ->
+                    zip.putNextEntry(ZipEntry(MARKER))
+                    zip.write("Vita3K Redux backup\nversion=${NativeLib.getAppVersion()}\ntime=${Date()}\n".toByteArray())
+                    zip.closeEntry()
+                    for (root in roots) {
+                        val file = File(storage, root)
+                        if (!file.exists()) continue
+                        file.walkTopDown().filter { it.isFile }.forEach { f ->
+                            val entry = f.relativeTo(storage).invariantSeparatorsPath
+                            zip.putNextEntry(ZipEntry(entry))
+                            f.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                            count++
+                        }
                     }
                 }
             }
+            require(count > 0) { "Nothing to back up" }
+            target.finish()
+            done = true
+        } finally {
+            if (!done) target.discard()
         }
-        require(count > 0) { "Nothing to back up" }
         name
     }
 
-    /** Restores a backup zip over the current data. Returns the number of files written. The app must restart afterwards. */
+    /** True if the last [restore] call already changed files (the app has to restart even if it failed halfway). */
+    @Volatile
+    var restoreTouchedFiles = false
+        private set
+
+    // zip entry names may not climb out of their folder
+    private fun safeName(name: String): Boolean =
+        name.isNotEmpty() && !name.startsWith("/") && !name.contains('\\') && name.split('/').none { it == ".." || it == "." || it.isEmpty() }
+
+    /**
+     * Restores a backup zip over the current data. Returns the number of files written. The app must restart afterwards.
+     * The whole zip is checked first (marker, entry names), nothing is written for a file that is not a backup.
+     */
     suspend fun restore(context: Context, uri: Uri): Int = withContext(Dispatchers.IO) {
+        restoreTouchedFiles = false
         val storage = storageDir()
-        val canonicalStorage = storage.canonicalFile
-        var count = 0
-        var marker = false
-        val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open the file")
-        ZipInputStream(input.buffered()).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (entry.name == MARKER) {
-                    marker = true
-                    continue
-                }
-                if (entry.isDirectory) continue
-                // only our own folders, nothing outside the storage folder
-                val allowed = roots.any { entry.name == it || entry.name.startsWith("$it/") }
-                if (!allowed) continue
-                val target = File(storage, entry.name).canonicalFile
-                if (!target.path.startsWith(canonicalStorage.path + File.separator)) continue
-                target.parentFile?.mkdirs()
-                val tmp = File(target.parentFile, target.name + ".restore")
-                tmp.outputStream().use { zip.copyTo(it) }
-                if (target.exists()) target.delete()
-                check(tmp.renameTo(target)) { "Cannot write ${entry.name}" }
-                count++
+        val canonicalRoots = roots.associateWith { File(storage, it).canonicalFile }
+
+        // random access to the zip needs a real file
+        val temp = File.createTempFile("restore", ".zip", context.cacheDir)
+        try {
+            (context.contentResolver.openInputStream(uri) ?: error("Cannot open the file")).use { input ->
+                temp.outputStream().use { input.copyTo(it) }
             }
+            ZipFile(temp).use { zip ->
+                require(zip.getEntry(MARKER) != null) { "This is not a Vita3K Redux backup" }
+
+                // (entry, target) of everything that may be written
+                val work = ArrayList<Pair<ZipEntry, File>>()
+                for (entry in zip.entries()) {
+                    if (entry.name == MARKER || entry.isDirectory) continue
+                    if (!safeName(entry.name)) throw IllegalArgumentException("Unsafe path in the backup: ${entry.name}")
+                    val root = roots.firstOrNull { entry.name == it || entry.name.startsWith("$it/") } ?: continue
+                    val canonicalRoot = canonicalRoots.getValue(root)
+                    val target = File(storage, entry.name).canonicalFile
+                    // the file has to stay inside the very folder of its root, not only inside the storage
+                    if (target != canonicalRoot && !target.path.startsWith(canonicalRoot.path + File.separator))
+                        throw IllegalArgumentException("Unsafe path in the backup: ${entry.name}")
+                    work.add(entry to target)
+                }
+
+                var count = 0
+                for ((entry, target) in work) {
+                    target.parentFile?.mkdirs()
+                    val tmp = File(target.parentFile, target.name + ".restore")
+                    zip.getInputStream(entry).use { input -> tmp.outputStream().use { input.copyTo(it) } }
+                    restoreTouchedFiles = true
+                    if (target.exists()) target.delete()
+                    check(tmp.renameTo(target)) { "Cannot write ${entry.name}" }
+                    count++
+                }
+                count
+            }
+        } finally {
+            temp.delete()
         }
-        require(marker) { "This is not a Vita3K Redux backup" }
-        count
     }
 
-    private fun openDownloadsStream(context: Context, name: String): OutputStream {
+    /** A file in Downloads that becomes visible only when it is complete. */
+    private class DownloadsTarget(
+        val open: () -> OutputStream,
+        val finish: () -> Unit,
+        val discard: () -> Unit
+    )
+
+    private fun createDownloadsTarget(context: Context, name: String): DownloadsTarget {
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
                 put(MediaStore.Downloads.MIME_TYPE, "application/zip")
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: error("Cannot create a file in Downloads")
-            return context.contentResolver.openOutputStream(uri) ?: error("Cannot open $name for writing")
+            return DownloadsTarget(
+                open = { context.contentResolver.openOutputStream(uri) ?: error("Cannot open $name for writing") },
+                finish = {
+                    val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                    context.contentResolver.update(uri, done, null, null)
+                },
+                discard = { runCatching { context.contentResolver.delete(uri, null, null) } }
+            )
         }
         val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         dir.mkdirs()
-        return File(dir, name).outputStream()
+        val file = File(dir, name)
+        return DownloadsTarget(
+            open = { file.outputStream() },
+            finish = {},
+            discard = { runCatching { file.delete() } }
+        )
     }
 }

@@ -824,6 +824,10 @@ bool SMAAScreenFilter::upload_lookup_textures() {
 
     vkutil::Buffer staging(area_data.size() + search_data.size());
     staging.init_buffer(vk::BufferUsageFlagBits::eTransferSrc, vkutil::vma_mapped_alloc);
+    if (!staging.mapped_data) {
+        LOG_ERROR("SMAA: the staging buffer is not mapped");
+        return false;
+    }
     memcpy(staging.mapped_data, area_data.data(), area_data.size());
     memcpy(static_cast<uint8_t *>(staging.mapped_data) + area_data.size(), search_data.data(), search_data.size());
 
@@ -851,7 +855,16 @@ bool SMAAScreenFilter::upload_lookup_textures() {
 
 void SMAAScreenFilter::init() {
     SinglePassScreenFilter::init();
+    try {
+        init_smaa();
+    } catch (const std::exception &e) {
+        // without SMAA the picture is shown with the bilinear filter
+        LOG_ERROR("SMAA: disabled: {}", e.what());
+        is_ok = false;
+    }
+}
 
+void SMAAScreenFilter::init_smaa() {
     vk::Device device = screen.state.device;
     const uint32_t slots = screen.swapchain_size;
 
@@ -946,8 +959,8 @@ void SMAAScreenFilter::destroy_images() {
 void SMAAScreenFilter::create_images(uint32_t width, uint32_t height) {
     screen.state.wait_gpu_idle();
     destroy_images();
-    image_width = width;
-    image_height = height;
+    image_width = 0;
+    image_height = 0;
 
     const uint32_t slots = screen.swapchain_size;
     edges_images.resize(slots);
@@ -984,6 +997,8 @@ void SMAAScreenFilter::create_images(uint32_t width, uint32_t height) {
         };
         screen.state.device.updateDescriptorSets(writes, {});
     }
+    image_width = width;
+    image_height = height;
 }
 
 void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk::ImageLayout src_layout, const Viewport &viewport) {
@@ -1004,8 +1019,19 @@ void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk:
         return;
     }
 
-    if (viewport.width != image_width || viewport.height != image_height)
-        create_images(viewport.width, viewport.height);
+    if (viewport.width != image_width || viewport.height != image_height) {
+        try {
+            create_images(viewport.width, viewport.height);
+        } catch (const std::exception &e) {
+            // out of memory at a high internal resolution: show the picture without SMAA
+            LOG_ERROR("SMAA: disabled, could not create the images: {}", e.what());
+            destroy_images();
+            image_width = image_height = 0;
+            is_ok = false;
+            SinglePassScreenFilter::render(true, src_img, src_layout, viewport);
+            return;
+        }
+    }
 
     vk::CommandBuffer cmd = screen.current_cmd_buffer;
     constexpr auto sampled = vk::DescriptorType::eCombinedImageSampler;
