@@ -997,6 +997,11 @@ void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk:
 
     const uint32_t slot = screen.swapchain_image_idx;
     if (!is_pre_renderpass) {
+        const Viewport output_viewport = Viewport{
+        .offset_x = 0, .offset_y = 0,
+        .width = image_width, .height = image_height,
+        .texture_width = image_width, .texture_height = image_height
+    };
         SinglePassScreenFilter::render(false, output_images[slot].view, vk::ImageLayout::eShaderReadOnlyOptimal, output_viewport);
         return;
     }
@@ -1054,7 +1059,7 @@ void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk:
     output_images[slot].transition_to(cmd, vkutil::ImageLayout::SampledImage);
 
     // the render pass shows the result, which is the whole picture of its own image
-    output_viewport = Viewport{
+    const Viewport output_viewport = Viewport{
         .offset_x = 0, .offset_y = 0,
         .width = image_width, .height = image_height,
         .texture_width = image_width, .texture_height = image_height

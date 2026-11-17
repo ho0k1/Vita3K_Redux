@@ -166,8 +166,6 @@ private:
     uint32_t image_height = 0;
 
     bool is_ok = false;
-    // what the render pass part has to draw
-    Viewport output_viewport{};
 
     bool upload_lookup_textures();
     void create_images(uint32_t width, uint32_t height);
