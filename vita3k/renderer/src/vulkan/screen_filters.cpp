@@ -15,6 +15,9 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <fstream>
+#include <iterator>
+
 #include "renderer/vulkan/screen_filters.h"
 #include "renderer/vulkan/screen_renderer.h"
 
@@ -728,3 +731,333 @@ void FSRScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk::
 }
 
 } // namespace renderer::vulkan
+
+// ---------------------------------------------------------------------------------------------------------------------
+// SMAA
+
+namespace {
+struct SmaaEdgesConstants {
+    int32_t offset[2];
+    int32_t size[2];
+};
+struct SmaaWeightsConstants {
+    int32_t size[2];
+};
+struct SmaaBlendConstants {
+    int32_t offset[2];
+    int32_t size[2];
+    int32_t texture_size[2];
+};
+
+vk::DescriptorSetLayoutBinding smaa_binding(uint32_t index, vk::DescriptorType type) {
+    return vk::DescriptorSetLayoutBinding{
+        .binding = index,
+        .descriptorType = type,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eCompute
+    };
+}
+
+bool read_binary_file(const fs::path &path, std::vector<uint8_t> &out) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file)
+        return false;
+    out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    return true;
+}
+} // namespace
+
+vk::Sampler SMAAScreenFilter::create_sampler() {
+    vk::SamplerCreateInfo sampler_info{
+        .magFilter = vk::Filter::eLinear,
+        .minFilter = vk::Filter::eLinear,
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+    };
+    return screen.state.device.createSampler(sampler_info);
+}
+
+SMAAScreenFilter::~SMAAScreenFilter() {
+    vk::Device device = screen.state.device;
+    screen.state.wait_gpu_idle();
+    destroy_images();
+    area_texture.destroy();
+    search_texture.destroy();
+
+    device.destroy(edges_pipeline);
+    device.destroy(weights_pipeline);
+    device.destroy(blend_pipeline);
+    device.destroy(edges_pipeline_layout);
+    device.destroy(weights_pipeline_layout);
+    device.destroy(blend_pipeline_layout);
+    device.destroy(descriptor_pool);
+    device.destroy(edges_layout);
+    device.destroy(weights_layout);
+    device.destroy(blend_layout);
+    device.destroy(edges_shader);
+    device.destroy(weights_shader);
+    device.destroy(blend_shader);
+    device.destroy(linear_sampler);
+    device.destroy(nearest_sampler);
+}
+
+bool SMAAScreenFilter::upload_lookup_textures() {
+    const fs::path shaders_path = screen.state.static_assets / "shaders-builtin/vulkan";
+    std::vector<uint8_t> area_data, search_data;
+    if (!read_binary_file(shaders_path / "smaa_area.bin", area_data) || !read_binary_file(shaders_path / "smaa_search.bin", search_data)) {
+        LOG_ERROR("SMAA: could not read the lookup textures");
+        return false;
+    }
+    constexpr uint32_t area_w = 160, area_h = 560, search_w = 64, search_h = 16;
+    if (area_data.size() != area_w * area_h * 2 || search_data.size() != search_w * search_h) {
+        LOG_ERROR("SMAA: the lookup textures have a wrong size");
+        return false;
+    }
+
+    area_texture.width = area_w;
+    area_texture.height = area_h;
+    area_texture.format = vk::Format::eR8G8Unorm;
+    area_texture.init_image(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
+    search_texture.width = search_w;
+    search_texture.height = search_h;
+    search_texture.format = vk::Format::eR8Unorm;
+    search_texture.init_image(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst);
+
+    vkutil::Buffer staging(area_data.size() + search_data.size());
+    staging.init_buffer(vk::BufferUsageFlagBits::eTransferSrc, vkutil::vma_mapped_alloc);
+    memcpy(staging.mapped_data, area_data.data(), area_data.size());
+    memcpy(static_cast<uint8_t *>(staging.mapped_data) + area_data.size(), search_data.data(), search_data.size());
+
+    vk::CommandBuffer cmd = vkutil::create_single_time_command(screen.state.device, screen.state.general_command_pool);
+    area_texture.transition_to_discard(cmd, vkutil::ImageLayout::TransferDst);
+    search_texture.transition_to_discard(cmd, vkutil::ImageLayout::TransferDst);
+    vk::BufferImageCopy area_copy{
+        .bufferOffset = 0,
+        .imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 },
+        .imageExtent = { area_w, area_h, 1 }
+    };
+    cmd.copyBufferToImage(staging.buffer, area_texture.image, vk::ImageLayout::eTransferDstOptimal, area_copy);
+    vk::BufferImageCopy search_copy{
+        .bufferOffset = area_data.size(),
+        .imageSubresource = { vk::ImageAspectFlagBits::eColor, 0, 0, 1 },
+        .imageExtent = { search_w, search_h, 1 }
+    };
+    cmd.copyBufferToImage(staging.buffer, search_texture.image, vk::ImageLayout::eTransferDstOptimal, search_copy);
+    area_texture.transition_to(cmd, vkutil::ImageLayout::SampledImage);
+    search_texture.transition_to(cmd, vkutil::ImageLayout::SampledImage);
+    // waits for the work to be done, so the staging buffer can go away
+    vkutil::end_single_time_command(screen.state.device, screen.state.general_queue, screen.state.general_command_pool, cmd);
+    return true;
+}
+
+void SMAAScreenFilter::init() {
+    SinglePassScreenFilter::init();
+
+    vk::Device device = screen.state.device;
+    const uint32_t slots = screen.swapchain_size;
+
+    vk::SamplerCreateInfo sampler_info{
+        .magFilter = vk::Filter::eLinear,
+        .minFilter = vk::Filter::eLinear,
+        .addressModeU = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeV = vk::SamplerAddressMode::eClampToEdge,
+        .addressModeW = vk::SamplerAddressMode::eClampToEdge,
+    };
+    linear_sampler = device.createSampler(sampler_info);
+    sampler_info.magFilter = vk::Filter::eNearest;
+    sampler_info.minFilter = vk::Filter::eNearest;
+    nearest_sampler = device.createSampler(sampler_info);
+
+    const fs::path shaders_path = screen.state.static_assets / "shaders-builtin/vulkan";
+    edges_shader = vkutil::load_shader(device, shaders_path / "smaa_edges.comp.spv");
+    weights_shader = vkutil::load_shader(device, shaders_path / "smaa_weights.comp.spv");
+    blend_shader = vkutil::load_shader(device, shaders_path / "smaa_blend.comp.spv");
+    if (!edges_shader || !weights_shader || !blend_shader || !upload_lookup_textures()) {
+        LOG_ERROR("SMAA: disabled, the shaders could not be loaded");
+        return;
+    }
+
+    constexpr auto sampled = vk::DescriptorType::eCombinedImageSampler;
+    constexpr auto storage = vk::DescriptorType::eStorageImage;
+    const std::array edges_bindings = { smaa_binding(0, sampled), smaa_binding(1, storage) };
+    const std::array weights_bindings = { smaa_binding(0, sampled), smaa_binding(1, sampled), smaa_binding(2, sampled), smaa_binding(3, storage) };
+    const std::array blend_bindings = { smaa_binding(0, sampled), smaa_binding(1, sampled), smaa_binding(2, storage) };
+
+    vk::DescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.setBindings(edges_bindings);
+    edges_layout = device.createDescriptorSetLayout(layout_info);
+    layout_info.setBindings(weights_bindings);
+    weights_layout = device.createDescriptorSetLayout(layout_info);
+    layout_info.setBindings(blend_bindings);
+    blend_layout = device.createDescriptorSetLayout(layout_info);
+
+    const std::array pool_sizes = {
+        vk::DescriptorPoolSize{ sampled, slots * (1 + 3 + 2) },
+        vk::DescriptorPoolSize{ storage, slots * 3 },
+    };
+    vk::DescriptorPoolCreateInfo pool_info{ .maxSets = slots * 3 };
+    pool_info.setPoolSizes(pool_sizes);
+    descriptor_pool = device.createDescriptorPool(pool_info);
+
+    auto allocate = [&](vk::DescriptorSetLayout layout) {
+        std::vector<vk::DescriptorSetLayout> layouts(slots, layout);
+        vk::DescriptorSetAllocateInfo alloc{ .descriptorPool = descriptor_pool };
+        alloc.setSetLayouts(layouts);
+        return device.allocateDescriptorSets(alloc);
+    };
+    edges_sets = allocate(edges_layout);
+    weights_sets = allocate(weights_layout);
+    blend_sets = allocate(blend_layout);
+
+    auto make_pipeline = [&](vk::DescriptorSetLayout set_layout, uint32_t push_size, vk::ShaderModule shader, vk::PipelineLayout &layout_out, vk::Pipeline &pipeline_out) {
+        vk::PipelineLayoutCreateInfo info{};
+        info.setSetLayouts(set_layout);
+        vk::PushConstantRange range{ .stageFlags = vk::ShaderStageFlagBits::eCompute, .offset = 0, .size = push_size };
+        info.setPushConstantRanges(range);
+        layout_out = device.createPipelineLayout(info);
+        vk::ComputePipelineCreateInfo compute_info{
+            .stage = { .stage = vk::ShaderStageFlagBits::eCompute, .module = shader, .pName = "main" },
+            .layout = layout_out
+        };
+        const auto result = device.createComputePipeline(nullptr, compute_info);
+        if (result.result != vk::Result::eSuccess)
+            return false;
+        pipeline_out = result.value;
+        return true;
+    };
+    is_ok = make_pipeline(edges_layout, sizeof(SmaaEdgesConstants), edges_shader, edges_pipeline_layout, edges_pipeline)
+        && make_pipeline(weights_layout, sizeof(SmaaWeightsConstants), weights_shader, weights_pipeline_layout, weights_pipeline)
+        && make_pipeline(blend_layout, sizeof(SmaaBlendConstants), blend_shader, blend_pipeline_layout, blend_pipeline);
+    if (!is_ok)
+        LOG_ERROR("SMAA: disabled, could not create the pipelines");
+}
+
+void SMAAScreenFilter::destroy_images() {
+    for (auto &img : edges_images)
+        img.destroy();
+    for (auto &img : weights_images)
+        img.destroy();
+    for (auto &img : output_images)
+        img.destroy();
+    edges_images.clear();
+    weights_images.clear();
+    output_images.clear();
+}
+
+void SMAAScreenFilter::create_images(uint32_t width, uint32_t height) {
+    screen.state.wait_gpu_idle();
+    destroy_images();
+    image_width = width;
+    image_height = height;
+
+    const uint32_t slots = screen.swapchain_size;
+    edges_images.resize(slots);
+    weights_images.resize(slots);
+    output_images.resize(slots);
+    const vk::ImageUsageFlags usage = vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled;
+    for (uint32_t i = 0; i < slots; i++) {
+        for (auto *img : { &edges_images[i], &weights_images[i], &output_images[i] }) {
+            img->width = width;
+            img->height = height;
+            img->format = vk::Format::eR8G8B8A8Unorm;
+            img->init_image(usage);
+        }
+
+        // sets that do not depend on the source picture
+        const vk::DescriptorImageInfo edges_storage{ {}, edges_images[i].view, vk::ImageLayout::eGeneral };
+        const vk::DescriptorImageInfo edges_sampled{ linear_sampler, edges_images[i].view, vk::ImageLayout::eShaderReadOnlyOptimal };
+        const vk::DescriptorImageInfo area_info{ linear_sampler, area_texture.view, vk::ImageLayout::eShaderReadOnlyOptimal };
+        const vk::DescriptorImageInfo search_info{ nearest_sampler, search_texture.view, vk::ImageLayout::eShaderReadOnlyOptimal };
+        const vk::DescriptorImageInfo weights_storage{ {}, weights_images[i].view, vk::ImageLayout::eGeneral };
+        const vk::DescriptorImageInfo weights_sampled{ linear_sampler, weights_images[i].view, vk::ImageLayout::eShaderReadOnlyOptimal };
+        const vk::DescriptorImageInfo output_storage{ {}, output_images[i].view, vk::ImageLayout::eGeneral };
+
+        constexpr auto sampled = vk::DescriptorType::eCombinedImageSampler;
+        constexpr auto storage = vk::DescriptorType::eStorageImage;
+        const std::array writes = {
+            vk::WriteDescriptorSet{ .dstSet = edges_sets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = storage, .pImageInfo = &edges_storage },
+            vk::WriteDescriptorSet{ .dstSet = weights_sets[i], .dstBinding = 0, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &edges_sampled },
+            vk::WriteDescriptorSet{ .dstSet = weights_sets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &area_info },
+            vk::WriteDescriptorSet{ .dstSet = weights_sets[i], .dstBinding = 2, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &search_info },
+            vk::WriteDescriptorSet{ .dstSet = weights_sets[i], .dstBinding = 3, .descriptorCount = 1, .descriptorType = storage, .pImageInfo = &weights_storage },
+            vk::WriteDescriptorSet{ .dstSet = blend_sets[i], .dstBinding = 1, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &weights_sampled },
+            vk::WriteDescriptorSet{ .dstSet = blend_sets[i], .dstBinding = 2, .descriptorCount = 1, .descriptorType = storage, .pImageInfo = &output_storage },
+        };
+        screen.state.device.updateDescriptorSets(writes, {});
+    }
+}
+
+void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk::ImageLayout src_layout, const Viewport &viewport) {
+    if (!is_ok || !viewport.width || !viewport.height) {
+        // without SMAA this is the plain bilinear filter
+        SinglePassScreenFilter::render(is_pre_renderpass, src_img, src_layout, viewport);
+        return;
+    }
+
+    const uint32_t slot = screen.swapchain_image_idx;
+    if (!is_pre_renderpass) {
+        SinglePassScreenFilter::render(false, output_images[slot].view, vk::ImageLayout::eShaderReadOnlyOptimal, output_viewport);
+        return;
+    }
+
+    if (viewport.width != image_width || viewport.height != image_height)
+        create_images(viewport.width, viewport.height);
+
+    vk::CommandBuffer cmd = screen.current_cmd_buffer;
+    constexpr auto sampled = vk::DescriptorType::eCombinedImageSampler;
+
+    // the source picture changes every frame
+    const vk::DescriptorImageInfo src_nearest{ nearest_sampler, src_img, src_layout };
+    const vk::DescriptorImageInfo src_linear{ linear_sampler, src_img, src_layout };
+    const std::array writes = {
+        vk::WriteDescriptorSet{ .dstSet = edges_sets[slot], .dstBinding = 0, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &src_nearest },
+        vk::WriteDescriptorSet{ .dstSet = blend_sets[slot], .dstBinding = 0, .descriptorCount = 1, .descriptorType = sampled, .pImageInfo = &src_linear },
+    };
+    screen.state.device.updateDescriptorSets(writes, {});
+
+    const uint32_t groups_x = (image_width + 7) / 8;
+    const uint32_t groups_y = (image_height + 7) / 8;
+
+    // 1: edges
+    edges_images[slot].transition_to_discard(cmd, vkutil::ImageLayout::StorageImage);
+    SmaaEdgesConstants edges_constants{
+        { static_cast<int32_t>(viewport.offset_x), static_cast<int32_t>(viewport.offset_y) },
+        { static_cast<int32_t>(image_width), static_cast<int32_t>(image_height) }
+    };
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, edges_pipeline);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, edges_pipeline_layout, 0, edges_sets[slot], {});
+    cmd.pushConstants<SmaaEdgesConstants>(edges_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, edges_constants);
+    cmd.dispatch(groups_x, groups_y, 1);
+    edges_images[slot].transition_to(cmd, vkutil::ImageLayout::SampledImage);
+
+    // 2: blending weights
+    weights_images[slot].transition_to_discard(cmd, vkutil::ImageLayout::StorageImage);
+    SmaaWeightsConstants weights_constants{ { static_cast<int32_t>(image_width), static_cast<int32_t>(image_height) } };
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, weights_pipeline);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, weights_pipeline_layout, 0, weights_sets[slot], {});
+    cmd.pushConstants<SmaaWeightsConstants>(weights_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, weights_constants);
+    cmd.dispatch(groups_x, groups_y, 1);
+    weights_images[slot].transition_to(cmd, vkutil::ImageLayout::SampledImage);
+
+    // 3: blending
+    output_images[slot].transition_to_discard(cmd, vkutil::ImageLayout::StorageImage);
+    SmaaBlendConstants blend_constants{
+        { static_cast<int32_t>(viewport.offset_x), static_cast<int32_t>(viewport.offset_y) },
+        { static_cast<int32_t>(image_width), static_cast<int32_t>(image_height) },
+        { static_cast<int32_t>(viewport.texture_width), static_cast<int32_t>(viewport.texture_height) }
+    };
+    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, blend_pipeline);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, blend_pipeline_layout, 0, blend_sets[slot], {});
+    cmd.pushConstants<SmaaBlendConstants>(blend_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, blend_constants);
+    cmd.dispatch(groups_x, groups_y, 1);
+    output_images[slot].transition_to(cmd, vkutil::ImageLayout::SampledImage);
+
+    // the render pass shows the result, which is the whole picture of its own image
+    output_viewport = Viewport{
+        .offset_x = 0, .offset_y = 0,
+        .width = image_width, .height = image_height,
+        .texture_width = image_width, .texture_height = image_height
+    };
+    SinglePassScreenFilter::render(true, output_images[slot].view, vk::ImageLayout::eShaderReadOnlyOptimal, output_viewport);
+}

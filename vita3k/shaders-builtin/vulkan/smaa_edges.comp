@@ -1,0 +1,58 @@
+// SMAA: Enhanced Subpixel Morphological Antialiasing.
+// Copyright (C) 2013 Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro, Diego Gutierrez (MIT license,
+// see https://github.com/iryoku/smaa). Compute shader port for Vita3K Redux (HIGH preset, without diagonal detection).
+// Pass 1: luma edge detection. Output: R = edge on the left side of the pixel, G = edge on the top side.
+
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D src;
+layout(binding = 1, rgba8) uniform writeonly image2D dst_edges;
+
+layout(push_constant) uniform Constants {
+    ivec2 offset; // position of the picture inside the source texture
+    ivec2 size;   // size of the picture
+} c;
+
+#define SMAA_THRESHOLD 0.1
+#define SMAA_LOCAL_CONTRAST_ADAPTATION_FACTOR 2.0
+
+float luma(ivec2 p) {
+    return dot(texelFetch(src, c.offset + clamp(p, ivec2(0), c.size - 1), 0).rgb, vec3(0.2126, 0.7152, 0.0722));
+}
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= c.size.x || pos.y >= c.size.y)
+        return;
+
+    float L = luma(pos);
+    float Lleft = luma(pos + ivec2(-1, 0));
+    float Ltop = luma(pos + ivec2(0, -1));
+
+    vec4 delta;
+    delta.xy = abs(L - vec2(Lleft, Ltop));
+    vec2 edges = step(vec2(SMAA_THRESHOLD), delta.xy);
+
+    if (dot(edges, vec2(1.0)) == 0.0) {
+        imageStore(dst_edges, pos, vec4(0.0));
+        return;
+    }
+
+    float Lright = luma(pos + ivec2(1, 0));
+    float Lbottom = luma(pos + ivec2(0, 1));
+    delta.zw = abs(L - vec2(Lright, Lbottom));
+    vec2 maxDelta = max(delta.xy, delta.zw);
+
+    float Lleftleft = luma(pos + ivec2(-2, 0));
+    float Ltoptop = luma(pos + ivec2(0, -2));
+    delta.zw = abs(vec2(Lleft, Ltop) - vec2(Lleftleft, Ltoptop));
+    maxDelta = max(maxDelta.xy, delta.zw);
+    float finalDelta = max(maxDelta.x, maxDelta.y);
+
+    // local contrast adaptation
+    edges *= step(vec2(finalDelta), SMAA_LOCAL_CONTRAST_ADAPTATION_FACTOR * delta.xy);
+
+    imageStore(dst_edges, pos, vec4(edges, 0.0, 0.0));
+}

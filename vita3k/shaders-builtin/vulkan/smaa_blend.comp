@@ -1,0 +1,59 @@
+// SMAA: Enhanced Subpixel Morphological Antialiasing.
+// Copyright (C) 2013 Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro, Diego Gutierrez (MIT license,
+// see https://github.com/iryoku/smaa). Compute shader port for Vita3K Redux (HIGH preset, without diagonal detection).
+// Pass 3: neighbourhood blending. Mixes each pixel with its neighbours by the weights of pass 2.
+
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D src;      // linear
+layout(binding = 1) uniform sampler2D blend_tex; // linear
+layout(binding = 2, rgba8) uniform writeonly image2D dst;
+
+layout(push_constant) uniform Constants {
+    ivec2 offset;       // position of the picture inside the source texture
+    ivec2 size;         // size of the picture
+    ivec2 texture_size; // size of the source texture
+} c;
+
+vec4 color_at(vec2 coord) {
+    // coord is in the 0..1 space of the picture
+    return textureLod(src, (vec2(c.offset) + coord * vec2(c.size)) / vec2(c.texture_size), 0.0);
+}
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= c.size.x || pos.y >= c.size.y)
+        return;
+
+    vec2 metrics = 1.0 / vec2(c.size);
+    vec2 texcoord = (vec2(pos) + 0.5) * metrics;
+    vec4 offset = metrics.xyxy * vec4(1.0, 0.0, 0.0, 1.0) + texcoord.xyxy;
+
+    // the weights of the pixel on the right and below were computed for their own left and top sides
+    vec4 a;
+    a.x = textureLod(blend_tex, offset.xy, 0.0).a; // right
+    a.y = textureLod(blend_tex, offset.zw, 0.0).g; // top
+    a.wz = textureLod(blend_tex, texcoord, 0.0).xz; // bottom / left
+
+    vec4 color;
+    if (dot(a, vec4(1.0)) < 1e-5) {
+        color = color_at(texcoord);
+    } else {
+        bool h = max(a.x, a.z) > max(a.y, a.w); // max(horizontal) > max(vertical)
+
+        vec4 blendingOffset = vec4(0.0, a.y, 0.0, a.w);
+        vec2 blendingWeight = a.yw;
+        if (h) {
+            blendingOffset = vec4(a.x, 0.0, a.z, 0.0);
+            blendingWeight = a.xz;
+        }
+        blendingWeight /= dot(blendingWeight, vec2(1.0));
+
+        vec4 blendingCoord = blendingOffset * vec4(metrics.xy, -metrics.xy) + texcoord.xyxy;
+        color = blendingWeight.x * color_at(blendingCoord.xy);
+        color += blendingWeight.y * color_at(blendingCoord.zw);
+    }
+    imageStore(dst, pos, vec4(color.rgb, 1.0));
+}

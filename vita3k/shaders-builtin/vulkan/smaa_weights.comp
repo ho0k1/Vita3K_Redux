@@ -1,0 +1,191 @@
+// SMAA: Enhanced Subpixel Morphological Antialiasing.
+// Copyright (C) 2013 Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro, Diego Gutierrez (MIT license,
+// see https://github.com/iryoku/smaa). Compute shader port for Vita3K Redux (HIGH preset, without diagonal detection).
+// Pass 2: blending weight calculation. Finds the ends of the edge lines and, with the area texture, how much of
+// each neighbour has to be blended into the pixel.
+
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0) uniform sampler2D edges_tex;  // linear
+layout(binding = 1) uniform sampler2D area_tex;   // linear
+layout(binding = 2) uniform sampler2D search_tex; // nearest
+layout(binding = 3, rgba8) uniform writeonly image2D dst_weights;
+
+layout(push_constant) uniform Constants {
+    ivec2 size;
+} c;
+
+#define SMAA_MAX_SEARCH_STEPS 16
+#define SMAA_CORNER_ROUNDING 25
+#define SMAA_CORNER_ROUNDING_NORM (float(SMAA_CORNER_ROUNDING) / 100.0)
+#define SMAA_AREATEX_MAX_DISTANCE 16
+#define SMAA_AREATEX_PIXEL_SIZE (1.0 / vec2(160.0, 560.0))
+#define SMAA_AREATEX_SUBTEX_SIZE (1.0 / 7.0)
+#define SMAA_SEARCHTEX_SIZE vec2(66.0, 33.0)
+#define SMAA_SEARCHTEX_PACKED_SIZE vec2(64.0, 16.0)
+
+vec2 metrics; // 1 / size
+
+vec4 edge_at(vec2 coord) {
+    return textureLod(edges_tex, coord, 0.0);
+}
+
+vec4 edge_at_offset(vec2 coord, vec2 offset) {
+    return textureLod(edges_tex, coord + offset * metrics, 0.0);
+}
+
+float search_length(vec2 e, float offset) {
+    // the texture is flipped vertically, with left and right cases taking half of the space horizontally
+    vec2 scale = SMAA_SEARCHTEX_SIZE * vec2(0.5, -1.0);
+    vec2 bias = SMAA_SEARCHTEX_SIZE * vec2(offset, 1.0);
+    scale += vec2(-1.0, 1.0);
+    bias += vec2(0.5, -0.5);
+    scale *= 1.0 / SMAA_SEARCHTEX_PACKED_SIZE;
+    bias *= 1.0 / SMAA_SEARCHTEX_PACKED_SIZE;
+    return textureLod(search_tex, scale * e + bias, 0.0).r;
+}
+
+float search_x_left(vec2 texcoord, float end) {
+    vec2 e = vec2(0.0, 1.0);
+    while (texcoord.x > end && e.g > 0.8281 && e.r == 0.0) {
+        e = edge_at(texcoord).rg;
+        texcoord -= vec2(2.0, 0.0) * metrics;
+    }
+    float offset = -(255.0 / 127.0) * search_length(e, 0.0) + 3.25;
+    return metrics.x * offset + texcoord.x;
+}
+
+float search_x_right(vec2 texcoord, float end) {
+    vec2 e = vec2(0.0, 1.0);
+    while (texcoord.x < end && e.g > 0.8281 && e.r == 0.0) {
+        e = edge_at(texcoord).rg;
+        texcoord += vec2(2.0, 0.0) * metrics;
+    }
+    float offset = -(255.0 / 127.0) * search_length(e, 0.5) + 3.25;
+    return -metrics.x * offset + texcoord.x;
+}
+
+float search_y_up(vec2 texcoord, float end) {
+    vec2 e = vec2(1.0, 0.0);
+    while (texcoord.y > end && e.r > 0.8281 && e.g == 0.0) {
+        e = edge_at(texcoord).rg;
+        texcoord -= vec2(0.0, 2.0) * metrics;
+    }
+    float offset = -(255.0 / 127.0) * search_length(e.gr, 0.0) + 3.25;
+    return metrics.y * offset + texcoord.y;
+}
+
+float search_y_down(vec2 texcoord, float end) {
+    vec2 e = vec2(1.0, 0.0);
+    while (texcoord.y < end && e.r > 0.8281 && e.g == 0.0) {
+        e = edge_at(texcoord).rg;
+        texcoord += vec2(0.0, 2.0) * metrics;
+    }
+    float offset = -(255.0 / 127.0) * search_length(e.gr, 0.5) + 3.25;
+    return -metrics.y * offset + texcoord.y;
+}
+
+vec2 area(vec2 dist, float e1, float e2, float offset) {
+    // rounding prevents precision errors of bilinear filtering
+    vec2 texcoord = float(SMAA_AREATEX_MAX_DISTANCE) * round(4.0 * vec2(e1, e2)) + dist;
+    // scale and bias for texel space translation
+    texcoord = SMAA_AREATEX_PIXEL_SIZE * texcoord + 0.5 * SMAA_AREATEX_PIXEL_SIZE;
+    // move to the proper place, according to the subpixel offset
+    texcoord.y = SMAA_AREATEX_SUBTEX_SIZE * offset + texcoord.y;
+    return textureLod(area_tex, texcoord, 0.0).rg;
+}
+
+void detect_horizontal_corner(inout vec2 weights, vec4 texcoord, vec2 d) {
+    vec2 leftRight = step(d.xy, d.yx);
+    vec2 rounding = (1.0 - SMAA_CORNER_ROUNDING_NORM) * leftRight;
+    rounding /= leftRight.x + leftRight.y; // reduce blending for pixels in the center of a line
+
+    vec2 factor = vec2(1.0);
+    factor.x -= rounding.x * edge_at_offset(texcoord.xy, vec2(0, 1)).r;
+    factor.x -= rounding.y * edge_at_offset(texcoord.zw, vec2(1, 1)).r;
+    factor.y -= rounding.x * edge_at_offset(texcoord.xy, vec2(0, -2)).r;
+    factor.y -= rounding.y * edge_at_offset(texcoord.zw, vec2(1, -2)).r;
+    weights *= clamp(factor, 0.0, 1.0);
+}
+
+void detect_vertical_corner(inout vec2 weights, vec4 texcoord, vec2 d) {
+    vec2 leftRight = step(d.xy, d.yx);
+    vec2 rounding = (1.0 - SMAA_CORNER_ROUNDING_NORM) * leftRight;
+    rounding /= leftRight.x + leftRight.y;
+
+    vec2 factor = vec2(1.0);
+    factor.x -= rounding.x * edge_at_offset(texcoord.xy, vec2(1, 0)).g;
+    factor.x -= rounding.y * edge_at_offset(texcoord.zw, vec2(1, 1)).g;
+    factor.y -= rounding.x * edge_at_offset(texcoord.xy, vec2(-2, 0)).g;
+    factor.y -= rounding.y * edge_at_offset(texcoord.zw, vec2(-2, 1)).g;
+    weights *= clamp(factor, 0.0, 1.0);
+}
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= c.size.x || pos.y >= c.size.y)
+        return;
+
+    metrics = 1.0 / vec2(c.size);
+    vec2 texcoord = (vec2(pos) + 0.5) * metrics;
+    vec2 pixcoord = texcoord * vec2(c.size);
+
+    // offsets of the searches and the ends of the loops
+    vec4 offset0 = metrics.xyxy * vec4(-0.25, -0.125, 1.25, -0.125) + texcoord.xyxy;
+    vec4 offset1 = metrics.xyxy * vec4(-0.125, -0.25, -0.125, 1.25) + texcoord.xyxy;
+    vec4 offset2 = metrics.xxyy * (vec4(-2.0, 2.0, -2.0, 2.0) * float(SMAA_MAX_SEARCH_STEPS)) + vec4(offset0.xz, offset1.yw);
+
+    vec4 weights = vec4(0.0);
+    vec2 e = edge_at(texcoord).rg;
+
+    if (e.g > 0.0) { // edge at north
+        vec2 d;
+        vec3 coords;
+        coords.x = search_x_left(offset0.xy, offset2.x);
+        coords.y = offset1.y; // offset1.y = texcoord.y - 0.25 * metrics.y
+        d.x = coords.x;
+
+        float e1 = edge_at(coords.xy).r;
+
+        coords.z = search_x_right(offset0.zw, offset2.y);
+        d.y = coords.z;
+
+        // distances in pixels
+        d = abs(round(vec2(c.size.x) * d - vec2(pixcoord.x)));
+        vec2 sqrt_d = sqrt(d);
+
+        float e2 = edge_at_offset(coords.zy, vec2(1, 0)).r;
+
+        weights.rg = area(sqrt_d, e1, e2, 0.0);
+
+        coords.y = texcoord.y;
+        detect_horizontal_corner(weights.rg, coords.xyzy, d);
+    }
+
+    if (e.r > 0.0) { // edge at west
+        vec2 d;
+        vec3 coords;
+        coords.y = search_y_up(offset1.xy, offset2.z);
+        coords.x = offset0.x; // offset0.x = texcoord.x - 0.25 * metrics.x
+        d.x = coords.y;
+
+        float e1 = edge_at(coords.xy).g;
+
+        coords.z = search_y_down(offset1.zw, offset2.w);
+        d.y = coords.z;
+
+        d = abs(round(vec2(c.size.y) * d - vec2(pixcoord.y)));
+        vec2 sqrt_d = sqrt(d);
+
+        float e2 = edge_at_offset(coords.xz, vec2(0, 1)).g;
+
+        weights.ba = area(sqrt_d, e1, e2, 0.0);
+
+        coords.x = texcoord.x;
+        detect_vertical_corner(weights.ba, coords.xyxz, d);
+    }
+
+    imageStore(dst_weights, pos, weights);
+}

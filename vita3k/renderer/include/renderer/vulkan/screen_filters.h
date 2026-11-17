@@ -147,6 +147,48 @@ public:
     }
 };
 
+// SMAA 1x (HIGH preset, without diagonal detection): three compute passes (edges, blending weights, blending) on the
+// game picture, then the result is shown with the bilinear filter
+class SMAAScreenFilter : public SinglePassScreenFilter {
+private:
+    vk::ShaderModule edges_shader, weights_shader, blend_shader;
+    vk::DescriptorSetLayout edges_layout, weights_layout, blend_layout;
+    vk::PipelineLayout edges_pipeline_layout, weights_pipeline_layout, blend_pipeline_layout;
+    vk::Pipeline edges_pipeline, weights_pipeline, blend_pipeline;
+    vk::DescriptorPool descriptor_pool;
+    std::vector<vk::DescriptorSet> edges_sets, weights_sets, blend_sets;
+    vk::Sampler linear_sampler, nearest_sampler;
+
+    vkutil::Image area_texture, search_texture;
+    // one set of images per swapchain image (frames in flight must not share them)
+    std::vector<vkutil::Image> edges_images, weights_images, output_images;
+    uint32_t image_width = 0;
+    uint32_t image_height = 0;
+
+    bool is_ok = false;
+    // what the render pass part has to draw
+    Viewport output_viewport{};
+
+    bool upload_lookup_textures();
+    void create_images(uint32_t width, uint32_t height);
+    void destroy_images();
+
+protected:
+    vk::Sampler create_sampler() override;
+
+public:
+    SMAAScreenFilter(ScreenRenderer &screen)
+        : SinglePassScreenFilter(screen) {}
+    ~SMAAScreenFilter();
+
+    void init() override;
+    void render(bool is_pre_renderpass, vk::ImageView src_img, vk::ImageLayout src_layout, const Viewport &viewport) override;
+
+    std::string_view get_name() override {
+        return "SMAA";
+    }
+};
+
 class FSRScreenFilter : public ScreenFilter {
 private:
     // dst of the easu shader, src of the rcas shader

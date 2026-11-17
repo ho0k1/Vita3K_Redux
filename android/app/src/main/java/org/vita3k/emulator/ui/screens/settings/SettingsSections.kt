@@ -496,7 +496,7 @@ private fun GpuSettingsSection(
             val screenFilterTitle = stringResource(R.string.settings_gpu_screen_filter)
             val screenFilterHelp = helpEntry(screenFilterTitle, stringResource(R.string.settings_gpu_screen_filter_desc))
             val filterOptions = if (isVulkan) {
-                listOf("Nearest", "Bilinear", "Bicubic", "FXAA", "VSS", "FSR")
+                listOf("Nearest", "Bilinear", "Bicubic", "FXAA", "SMAA", "VSS", "FSR")
             } else {
                 listOf("Bilinear", "FXAA")
             }
