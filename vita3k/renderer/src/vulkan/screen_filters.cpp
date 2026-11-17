@@ -1002,7 +1002,7 @@ void SMAAScreenFilter::create_images(uint32_t width, uint32_t height) {
 }
 
 void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk::ImageLayout src_layout, const Viewport &viewport) {
-    if (!is_ok || !viewport.width || !viewport.height) {
+    if (!is_ok || !viewport.width || !viewport.height || screen.swapchain_image_idx >= edges_sets.size()) {
         // without SMAA this is the plain bilinear filter
         SinglePassScreenFilter::render(is_pre_renderpass, src_img, src_layout, viewport);
         return;
