@@ -730,8 +730,6 @@ void FSRScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk::
     // the barrier for the render pass will be handled by the renderpass external dependencies
 }
 
-} // namespace renderer::vulkan
-
 // ---------------------------------------------------------------------------------------------------------------------
 // SMAA
 
@@ -759,7 +757,7 @@ vk::DescriptorSetLayoutBinding smaa_binding(uint32_t index, vk::DescriptorType t
 }
 
 bool read_binary_file(const fs::path &path, std::vector<uint8_t> &out) {
-    std::ifstream file(path, std::ios::binary);
+    std::ifstream file(path.string(), std::ios::binary);
     if (!file)
         return false;
     out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
@@ -1066,3 +1064,5 @@ void SMAAScreenFilter::render(bool is_pre_renderpass, vk::ImageView src_img, vk:
     };
     SinglePassScreenFilter::render(true, output_images[slot].view, vk::ImageLayout::eShaderReadOnlyOptimal, output_viewport);
 }
+
+} // namespace renderer::vulkan
