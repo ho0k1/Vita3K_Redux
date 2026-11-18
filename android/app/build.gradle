@@ -44,7 +44,8 @@ android {
 		applicationId = "org.vita3kplus.emulator"
 		minSdk = 28
 		targetSdk = 35
-		versionCode = appVerHi * 100 + appVerMid * 10 + appVerLo
+		// +1000 keeps it above the 140 of the Vita3K Plus 1.4 based test builds (Android refuses downgrades)
+		versionCode = 1000 + appVerHi * 100 + appVerMid * 10 + appVerLo
 		versionName = appVersionName
 
 		ndk {

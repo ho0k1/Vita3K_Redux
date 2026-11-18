@@ -17,6 +17,7 @@ internal object AppRepository {
         "https://api.github.com/repos/Vita3K/compatibility/releases/latest"
     private const val COMPAT_DB_URL =
         "https://github.com/Vita3K/compatibility/releases/download/compat_db/app_compat_db.xml.zip"
+    private const val UPDATE_CHECK_ENABLED = false
     private const val UPDATE_RELEASE_URL =
         "https://api.github.com/repos/nckstwrt/Vita3K-Plus/releases/latest"
     private const val UPDATE_PAGE_URL =
@@ -101,6 +102,13 @@ internal object AppRepository {
         officialBuild: Boolean
     ): UpdateCheckResult = withContext(Dispatchers.IO) {
         val currentDisplayVersion = currentDisplayVersion(appVersion)
+        // Vita3K Redux has its own numbering: the Vita3K Plus release feed would only produce false updates
+        if (!UPDATE_CHECK_ENABLED)
+            return@withContext UpdateCheckResult(
+                status = UpdateCheckStatus.UpToDate,
+                message = "Update checks are not available in this build.",
+                currentDisplayVersion = currentDisplayVersion
+            )
         val response = httpGetString(UPDATE_RELEASE_URL)
             ?: return@withContext UpdateCheckResult(
                 status = UpdateCheckStatus.Failed,
@@ -185,9 +193,10 @@ internal object AppRepository {
             return ""
         }
 
-        val parts = appVersion.split("-", limit = 3)
-        val version = parts.getOrNull(0).orEmpty().ifBlank { appVersion }
-        val build = parts.getOrNull(1).orEmpty()
+        // format: <version>-<build number>-<hash>, the version itself may contain dashes (redux-1.1)
+        val match = Regex("""^(.+)-(\d+)-[^-]*$""").find(appVersion)
+        val version = match?.groupValues?.get(1) ?: appVersion
+        val build = match?.groupValues?.get(2).orEmpty()
         return if (build.isBlank()) version else "$version ($build)"
     }
 

@@ -628,11 +628,13 @@ private fun parseAppVersion(appVersion: String): ParsedAppVersion {
         return ParsedAppVersion(versionLabel = "")
     }
 
-    val parts = appVersion.split("-", limit = 3)
+    // <version>-<build number>-<revision>; the version itself may contain dashes (redux-1.1)
+    val match = Regex("""^(.+)-(\d+)-([^-]*)$""").find(appVersion)
+        ?: return ParsedAppVersion(versionLabel = appVersion)
     return ParsedAppVersion(
-        versionLabel = parts.getOrNull(0).orEmpty().ifBlank { appVersion },
-        buildNumber = parts.getOrNull(1)?.takeIf { it.isNotBlank() },
-        revision = parts.getOrNull(2)?.takeIf { it.isNotBlank() }
+        versionLabel = match.groupValues[1],
+        buildNumber = match.groupValues[2],
+        revision = match.groupValues[3].takeIf { it.isNotBlank() }
     )
 }
 
