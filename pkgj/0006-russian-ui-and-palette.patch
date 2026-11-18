@@ -1313,3 +1313,16 @@ index ed555af..ef1f5ca 100644
      }
  }
  }
+diff --git a/src/vita.cpp b/src/vita.cpp
+index 55824c5..38f3f78 100644
+--- a/src/vita.cpp
++++ b/src/vita.cpp
+@@ -51,7 +51,7 @@ extern "C"
+ 
+ extern "C"
+ {
+-    int _newlib_heap_size_user = 128 * 1024 * 1024;
++    int _newlib_heap_size_user = 256 * 1024 * 1024;
+ 
+     // libcurl calls fcntl(sock, F_SETFD, FD_CLOEXEC) on every socket it opens.
+     // PS Vita's SceNet layer does not support this and returns an error, which
