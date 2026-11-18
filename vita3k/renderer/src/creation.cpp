@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/perf_diag.h>
 #include <atomic>
 
 #include <gxm/types.h>
@@ -175,6 +176,7 @@ struct WorldStopScope {
         const int not_parked = kernel->stop_world(except_thread, std::chrono::milliseconds(50));
         const auto took_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         mem.transition_not_parked = not_parked;
+        perf::note_world_stop(static_cast<uint64_t>(took_ms) * 1000);
         static uint64_t clean_stops = 0;
         const bool interesting = not_parked > 0 || took_ms >= 10;
         if (interesting || ((++clean_stops) & 63) == 1)

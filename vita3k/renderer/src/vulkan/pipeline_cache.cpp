@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/perf_diag.h>
 #include <renderer/vulkan/pipeline_cache.h>
 
 #include <renderer/functions.h>
@@ -738,6 +739,7 @@ vk::PipelineShaderStageCreateInfo PipelineCache::retrieve_shader(const SceGxmPro
 
     // anything thrown here has to hand the slot back first or every thread waiting on this shader spins forever
     try {
+        perf::CompileScope compile_scope(perf::Kind::Shader, is_vertex ? "vertex" : "fragment");
         shader::usse::SpirvCode source = load_spirv_shader(*program, state.features, true, hints, maskupdate, state.shaders_path, state.shaders_log_path, shader_version, true);
         if (source.empty())
             throw std::runtime_error("shader translation produced no SPIR-V");
@@ -1551,7 +1553,10 @@ vk::Pipeline PipelineCache::compile_pipeline(SceGxmPrimitiveType type, vk::Rende
     if (cache_only)
         pipeline_info.flags |= vk::PipelineCreateFlagBits::eFailOnPipelineCompileRequiredEXT;
     try {
-        const auto result = state.device.createGraphicsPipeline(pipeline_cache, pipeline_info);
+        const auto result = [&] {
+            perf::CompileScope compile_scope(perf::Kind::Pipeline, cache_only ? "cache-only" : "full");
+            return state.device.createGraphicsPipeline(pipeline_cache, pipeline_info);
+        }();
         if (result.result == vk::Result::ePipelineCompileRequiredEXT)
             // not in the driver cache
             return nullptr;
@@ -1982,6 +1987,7 @@ vk::ShaderModule PipelineCache::precompile_shader(const Sha256Hash &hash, bool s
         .pCode = source.data()
     };
 
+    perf::CompileScope compile_scope(perf::Kind::Shader, "cached");
     vk::ShaderModule shader = state.device.createShaderModule(shader_info);
     {
         std::lock_guard<std::mutex> guard(shaders_mutex);

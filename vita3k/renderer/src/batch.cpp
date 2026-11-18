@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <renderer/perf_diag.h>
 #include <array>
 #include <cpu/functions.h>
 #include <renderer/commands.h>
@@ -366,6 +367,8 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             state.swap_window();
         }
     }
+    perf::on_render_thread() = true;
+    perf::FrameMeter frame_meter;
     try {
         while (!state.render_abort.load(std::memory_order_relaxed)) {
 #ifdef TRACY_ENABLE
@@ -374,7 +377,9 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             if (!state.set_current())
                 break;
 
+            frame_meter.begin_batches();
             process_batches(state, state.features, mem, config, 500);
+            frame_meter.end_batches();
 
             if (state.render_abort.load(std::memory_order_relaxed))
                 break;
@@ -396,7 +401,9 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             }
 
             state.render_frame(display, gxm, mem);
+            frame_meter.end_render();
             state.swap_window();
+            frame_meter.end_present();
             state.async_flip_requested.store(false, std::memory_order_relaxed);
 
 #ifdef TRACY_ENABLE
