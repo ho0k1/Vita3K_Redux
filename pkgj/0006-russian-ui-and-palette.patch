@@ -200,7 +200,7 @@ index e73c003..954d489 100644
      }
  }
 diff --git a/src/downloader.cpp b/src/downloader.cpp
-index cba57ec..fd0a740 100644
+index cba57ec..9d735b7 100644
 --- a/src/downloader.cpp
 +++ b/src/downloader.cpp
 @@ -40,35 +40,35 @@ ErrorInfo classify_error(const std::string& raw)
@@ -286,7 +286,32 @@ index cba57ec..fd0a740 100644
  }
  
  Downloader::Downloader()
-@@ -415,16 +415,20 @@ void Downloader::write_status(
+@@ -214,6 +214,24 @@ void Downloader::add(const DownloadItem& d)
+                         { return p.type == d.type && p.content == d.content; }),
+                 _parked.end());
+         _queue.push_back(d);
++        if (_batch)
++            return;
++        save_queue_locked();
++    }
++    _cond.notify_one();
++}
++
++void Downloader::begin_batch()
++{
++    ScopeLock _(_cond.get_mutex());
++    _batch = true;
++}
++
++void Downloader::end_batch()
++{
++    {
++        ScopeLock _(_cond.get_mutex());
++        _batch = false;
+         save_queue_locked();
+     }
+     _cond.notify_one();
+@@ -415,16 +433,20 @@ void Downloader::write_status(
  {
      DownloadItem cur;
      size_t queued;
@@ -308,7 +333,7 @@ index cba57ec..fd0a740 100644
              state,
              one_line(cur.name),
              cur.content.empty() ? "" : type_to_string(cur.type),
-@@ -432,6 +436,7 @@ void Downloader::write_status(
+@@ -432,6 +454,7 @@ void Downloader::write_status(
              offset,
              total,
              queued,
@@ -316,7 +341,7 @@ index cba57ec..fd0a740 100644
              _attempt.load(),
              MAX_RETRIES,
              kind,
-@@ -485,7 +490,7 @@ bool Downloader::wait_retry(
+@@ -485,7 +508,7 @@ bool Downloader::wait_retry(
  {
      _attempt = attempt;
      const auto status = fmt::format(
@@ -325,7 +350,7 @@ index cba57ec..fd0a740 100644
      {
          ScopeLock _(_cond.get_mutex());
          _status = status;
-@@ -611,9 +616,9 @@ void Downloader::run()
+@@ -611,9 +634,9 @@ void Downloader::run()
                          item.name,
                          item.content,
                          !failure.empty()
@@ -338,7 +363,7 @@ index cba57ec..fd0a740 100644
                          std::nullopt};
                  if (park)
                  {
-@@ -624,6 +629,9 @@ void Downloader::run()
+@@ -624,6 +647,9 @@ void Downloader::run()
                  while (_history.size() > 20)
                      _history.pop_front();
              }
@@ -349,7 +374,7 @@ index cba57ec..fd0a740 100644
          }
          if (failure.empty() && !_dying)
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index 62dba5a..9fef704 100644
+index 62dba5a..7711bcb 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
 @@ -42,7 +42,7 @@ struct DownloadHistoryEntry
@@ -361,7 +386,24 @@ index 62dba5a..9fef704 100644
      std::string status;
      // set when the failure can be fixed by trying again (network problems)
      std::optional<DownloadItem> retry;
-@@ -86,7 +86,7 @@ private:
+@@ -62,6 +62,11 @@ public:
+     ~Downloader();
+ 
+     void add(const DownloadItem& d);
++    // While a batch is open add() only queues in memory; end_batch() saves the
++    // queue once and wakes the downloader (adding hundreds of items one by one
++    // rewrote the whole queue file every time)
++    void begin_batch();
++    void end_batch();
+     void remove_from_queue(Type type, const std::string& contentid);
+     bool is_in_queue(Type type, const std::string& titleid);
+     std::optional<DownloadItem> get_current_download();
+@@ -82,11 +87,12 @@ private:
+     using ScopeLock = std::lock_guard<Mutex>;
+ 
+     Cond _cond;
++    bool _batch{false};
+     std::deque<DownloadItem> _queue;
      std::deque<DownloadHistoryEntry> _history;
  
      DownloadItem _current_download;
@@ -370,7 +412,7 @@ index 62dba5a..9fef704 100644
      std::atomic<uint64_t> _download_offset = 0;
      std::atomic<uint64_t> _download_size = 0;
  
-@@ -95,10 +95,10 @@ private:
+@@ -95,10 +101,10 @@ private:
      std::atomic<int> _attempt{0};
      std::string _last_raw; // raw exception text of the last failure, for the status file
      std::atomic<uint32_t> _last_status_ms{0};
@@ -471,7 +513,7 @@ index 026946c..bf1a1b0 100644
      ImGui::End();
  }
 diff --git a/src/gameview.cpp b/src/gameview.cpp
-index 0b16c8a..efc5611 100644
+index 0b16c8a..8dc6cef 100644
 --- a/src/gameview.cpp
 +++ b/src/gameview.cpp
 @@ -56,19 +56,19 @@ const char* presence_label(DbPresence presence)
@@ -812,7 +854,24 @@ index 0b16c8a..efc5611 100644
          for (uint32_t i = 0; i < dlc_db.count(); ++i)
          {
              DbItem* dlc = dlc_db.get(i);
-@@ -932,14 +934,14 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -912,16 +914,6 @@ std::vector<DbItem> find_dlcs(const std::string& titleid)
+     return result;
+ }
+ 
+-void queue_dlcs(Downloader* downloader, const std::vector<DbItem>& dlcs)
+-{
+-    for (const auto& dlc : dlcs)
+-    {
+-        if (pkgi_dlc_is_installed(dlc.content.c_str()) ||
+-            downloader->is_in_queue(Dlc, dlc.content))
+-            continue;
+-        pkgi_start_dlc_download(*downloader, dlc);
+-    }
+-}
+ }
+ 
+ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -932,14 +924,14 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
          {
              pkgi_dialog_question(
                      fmt::format(
@@ -831,7 +890,39 @@ index 0b16c8a..efc5611 100644
              return;
          }
          this->do_download(psp_install_mode);
-@@ -978,7 +980,7 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -948,7 +940,8 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+ 
+     // One button for the game and its DLCs
+     const auto dlcs = find_dlcs(_item->titleid);
+-    std::vector<DbItem> missing;
++    auto missing_list = std::make_shared<std::vector<DbItem>>();
++    auto& missing = *missing_list;
+     int64_t missing_size = 0;
+     for (const auto& dlc : dlcs)
+     {
+@@ -967,18 +960,24 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+     Downloader* downloader = _downloader;
+     const auto game_only = [this, psp_install_mode]
+     { this->do_download(psp_install_mode); };
+-    const auto dlc_only = [downloader, missing]
+-    { queue_dlcs(downloader, missing); };
++    // the closures only hold a pointer: the dialog copies them every frame
++    const std::shared_ptr<const std::vector<DbItem>> shared_missing =
++            missing_list;
++    const auto dlc_only = [downloader, shared_missing]
++    { pkgi_queue_dlcs_async(downloader, shared_missing, nullptr); };
+     const auto game_and_dlc =
+-            [this, psp_install_mode, downloader, missing]
++            [this, psp_install_mode, downloader, shared_missing]
+     {
+-        this->do_download(psp_install_mode);
+-        queue_dlcs(downloader, missing);
++        pkgi_queue_dlcs_async(
++                downloader,
++                shared_missing,
++                [this, psp_install_mode]
++                { this->do_download(psp_install_mode); });
+     };
      const auto cancel = [] {};
  
      const std::string dlc_info = fmt::format(
@@ -840,7 +931,7 @@ index 0b16c8a..efc5611 100644
  
      if (!installed)
      {
-@@ -986,21 +988,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -986,21 +985,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
          {
              pkgi_dialog_question(
                      fmt::format(
@@ -870,7 +961,7 @@ index 0b16c8a..efc5611 100644
                        game_and_dlc},
                       {"Cancel", cancel}});
          }
-@@ -1011,22 +1013,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -1011,22 +1010,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
      if (!missing.empty())
      {
          pkgi_dialog_question(
@@ -963,7 +1054,7 @@ index 371910a..d23377e 100644
  
  int pkgi_menu_is_open(void)
 diff --git a/src/pkgi.cpp b/src/pkgi.cpp
-index f051c57..8972110 100644
+index f051c57..2626567 100644
 --- a/src/pkgi.cpp
 +++ b/src/pkgi.cpp
 @@ -392,7 +392,7 @@ void pkgi_refresh_thread(void)
@@ -1152,7 +1243,77 @@ index f051c57..8972110 100644
                          .c_str());
      }
  }
-@@ -1536,8 +1536,8 @@ int main()
+@@ -1528,6 +1528,69 @@ void pkgi_start_dlc_download(Downloader& downloader, const DbItem& item)
+     mode = saved_mode;
+ }
+ 
++namespace
++{
++struct DlcPreparation
++{
++    Downloader* downloader{nullptr};
++    std::shared_ptr<const std::vector<DbItem>> dlcs;
++    size_t next{0};
++    bool active{false};
++};
++DlcPreparation dlc_prep;
++}
++
++void pkgi_queue_dlcs_async(
++        Downloader* downloader,
++        std::shared_ptr<const std::vector<DbItem>> dlcs,
++        std::function<void()> start_game)
++{
++    if (dlc_prep.active)
++        return;
++    downloader->begin_batch();
++    if (start_game)
++        start_game();
++    dlc_prep.downloader = downloader;
++    dlc_prep.dlcs = std::move(dlcs);
++    dlc_prep.next = 0;
++    dlc_prep.active = true;
++    pkgi_dialog_message("Подготовка очереди: 0%", 0);
++}
++
++void pkgi_dlc_prepare_step()
++{
++    if (!dlc_prep.active)
++        return;
++
++    const auto& dlcs = *dlc_prep.dlcs;
++    const size_t total = dlcs.size();
++    // a couple of items per frame keeps the UI alive and the heap calm
++    for (int n = 0; n < 2 && dlc_prep.next < total; ++n, ++dlc_prep.next)
++    {
++        const auto& dlc = dlcs[dlc_prep.next];
++        if (pkgi_dlc_is_installed(dlc.content.c_str()) ||
++            dlc_prep.downloader->is_in_queue(Dlc, dlc.content))
++            continue;
++        pkgi_start_dlc_download(*dlc_prep.downloader, dlc);
++    }
++
++    if (dlc_prep.next < total)
++    {
++        pkgi_dialog_message(
++                fmt::format(
++                        "Подготовка очереди: {}%",
++                        static_cast<int>(dlc_prep.next * 100 / total))
++                        .c_str(),
++                0);
++        return;
++    }
++
++    dlc_prep.downloader->end_batch();
++    dlc_prep.active = false;
++    dlc_prep.dlcs.reset();
++    pkgi_dialog_close();
++}
++
+ int main()
+ {
+     pkgi_start();
+@@ -1536,8 +1599,8 @@ int main()
      {
          if (!pkgi_is_unsafe_mode())
              throw std::runtime_error(
@@ -1163,7 +1324,7 @@ index f051c57..8972110 100644
  
          Downloader downloader;
  
-@@ -1550,7 +1550,7 @@ int main()
+@@ -1550,7 +1613,7 @@ int main()
          downloader.error = [](const std::string& error)
          {
              // FIXME this runs on the wrong thread
@@ -1172,7 +1333,7 @@ index f051c57..8972110 100644
          };
  
          LOG("PKGj started");
-@@ -1599,6 +1599,37 @@ int main()
+@@ -1599,6 +1662,37 @@ int main()
              start_update_thread();
  
          ImGui::CreateContext();
@@ -1210,7 +1371,7 @@ index f051c57..8972110 100644
          ImGuiIO& io = ImGui::GetIO();
          io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
          io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-@@ -1622,6 +1653,17 @@ int main()
+@@ -1622,6 +1716,17 @@ int main()
                      &merge_cfg,
                      io.Fonts->GetGlyphRangesJapanese());
          }
@@ -1228,7 +1389,16 @@ index f051c57..8972110 100644
  #endif
          io.Fonts->GetTexDataAsRGBA32((uint8_t**)&pixels, &width, &height);
  #ifndef PKGI_SIMULATOR
-@@ -1861,7 +1903,7 @@ int main()
+@@ -1821,6 +1926,8 @@ int main()
+                     downloads_view->render(input_snapshot);
+             }
+ 
++            pkgi_dlc_prepare_step();
++
+             if (pkgi_dialog_is_open())
+             {
+                 pkgi_do_dialog();
+@@ -1861,7 +1968,7 @@ int main()
                      switch (mres)
                      {
                      case MenuResultSearch:
@@ -1237,7 +1407,7 @@ index f051c57..8972110 100644
                          break;
                      case MenuResultSearchClear:
                          search_active = 0;
-@@ -1937,7 +1979,7 @@ int main()
+@@ -1937,7 +2044,7 @@ int main()
          LOGFE("Fatal error in main loop: {}", e.what());
          state = StateError;
          pkgi_snprintf(
@@ -1246,6 +1416,33 @@ index f051c57..8972110 100644
  
          pkgi_input input;
          while (pkgi_update(&input))
+diff --git a/src/pkgi.hpp b/src/pkgi.hpp
+index 5bf9cdf..35f11b3 100644
+--- a/src/pkgi.hpp
++++ b/src/pkgi.hpp
+@@ -1,5 +1,8 @@
+ #pragma once
+ 
++#include <functional>
++#include <memory>
++#include <vector>
+ #include "log.hpp"
+ 
+ #include <string>
+@@ -136,4 +139,13 @@ void pkgi_start_download(
+ // Starts the download of a DLC while another mode (the game list) is shown
+ void pkgi_start_dlc_download(Downloader& downloader, const DbItem& item);
+ 
++// Queues the DLCs a few at a time over several frames (progress dialog) and
++// starts the downloads when all are queued. start_game runs first, inside the
++// same batch.
++void pkgi_queue_dlcs_async(
++        Downloader* downloader,
++        std::shared_ptr<const std::vector<DbItem>> dlcs,
++        std::function<void()> start_game);
++void pkgi_dlc_prepare_step();
++
+ bool pkgi_is_module_present(const char* module_name);
 diff --git a/src/update.cpp b/src/update.cpp
 index ed555af..ef1f5ca 100644
 --- a/src/update.cpp
@@ -1326,3 +1523,20 @@ index 55824c5..38f3f78 100644
  
      // libcurl calls fcntl(sock, F_SETFD, FD_CLOEXEC) on every socket it opens.
      // PS Vita's SceNet layer does not support this and returns an error, which
+diff --git a/src/zrif.cpp b/src/zrif.cpp
+index eb2e449..668f158 100644
+--- a/src/zrif.cpp
++++ b/src/zrif.cpp
+@@ -219,6 +219,12 @@ int pkgi_zrif_decode(
+         const char* str, uint8_t* rif, char* error, uint32_t error_size)
+ {
+     uint8_t raw[1024];
++    // base64 expands 3 bytes to 4 chars: longer input would overflow raw
++    if (strlen(str) > sizeof(raw) / 3 * 4)
++    {
++        strncpy(error, "zRIF is too long, is it corrupted?", error_size);
++        return 0;
++    }
+     uint32_t len = base64_decode(str, raw);
+ 
+     uint8_t out[1024 + sizeof(zrif_dict)];
