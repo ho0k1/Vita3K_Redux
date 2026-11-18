@@ -210,6 +210,10 @@ private:
     vk::Pipeline compile_pipeline(SceGxmPrimitiveType type, vk::RenderPass render_pass, const ProgramBinding &vertex_program_binding, const ProgramBinding &fragment_program_binding, const GxmRecordState &record, bool has_color_surface_data, const shader::Hints &hints, bool has_casts, MemState &mem, bool cache_only = false);
 
 public:
+    // Redux perf stage 1: small draws (<= 6 vertices, usually UI/effect quads) are deferred to the workers too
+    // instead of being compiled on the render thread (the draw is skipped until its pipeline is ready)
+    static constexpr bool defer_whole_quad_draws = true;
+
     size_t pipeline_key_count() const { return pipelines.size(); }
 
     // if not 0, next time the pipeline cache should be saved (in seconds since epoch)
