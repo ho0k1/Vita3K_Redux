@@ -51,6 +51,7 @@ bool parse_patch_entries(const std::string &xml, PatchEntries &entries) {
     if (!doc.load_buffer(xml.data(), xml.size()))
         return false;
 
+    try {
     const auto root = doc.child("Patch");
     if (!root)
         return false;
@@ -79,6 +80,7 @@ bool parse_patch_entries(const std::string &xml, PatchEntries &entries) {
         entry.nid = node.attribute("NID").as_string();
 
         for (const auto line : node.child("PatchList").children("Line")) {
+            try {
             const std::string type = line.attribute("Type").as_string();
             Patch patch{};
             const auto values = parse_value(line.attribute("Value").as_string());
@@ -88,8 +90,15 @@ bool parse_patch_entries(const std::string &xml, PatchEntries &entries) {
             }
             patch.values = *values;
             entry.patches.push_back(std::move(patch));
+            } catch (const std::exception &e) {
+                LOG_WARN("Skipping malformed patch line in {} ({}): {}", entry.title, entry.name, e.what());
+            }
         }
         entries.push_back(std::move(entry));
+    }
+    } catch (const std::exception &e) {
+        LOG_ERROR("Patch list parse failed: {}", e.what());
+        return !entries.empty();
     }
 
     return true;

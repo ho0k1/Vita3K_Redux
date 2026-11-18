@@ -471,7 +471,7 @@ index 026946c..bf1a1b0 100644
      ImGui::End();
  }
 diff --git a/src/gameview.cpp b/src/gameview.cpp
-index 0b16c8a..a3202ad 100644
+index 0b16c8a..efc5611 100644
 --- a/src/gameview.cpp
 +++ b/src/gameview.cpp
 @@ -56,19 +56,19 @@ const char* presence_label(DbPresence presence)
@@ -800,7 +800,19 @@ index 0b16c8a..a3202ad 100644
          ok = false;
      }
  
-@@ -932,14 +932,14 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -896,8 +896,10 @@ std::vector<DbItem> find_dlcs(const std::string& titleid)
+     try
+     {
+         TitleDatabase dlc_db(pkgi_get_config_folder());
++        // Search by the title id so that only this game's DLCs are built:
++        // keeping the whole DLC list in memory exhausts the Vita heap
+         dlc_db.reload(
+-                ModeDlcs, DbFilterAll, SortByName, SortAscending, "", {});
++                ModeDlcs, DbFilterAll, SortByName, SortAscending, titleid, {});
+         for (uint32_t i = 0; i < dlc_db.count(); ++i)
+         {
+             DbItem* dlc = dlc_db.get(i);
+@@ -932,14 +934,14 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
          {
              pkgi_dialog_question(
                      fmt::format(
@@ -819,7 +831,7 @@ index 0b16c8a..a3202ad 100644
              return;
          }
          this->do_download(psp_install_mode);
-@@ -978,7 +978,7 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -978,7 +980,7 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
      const auto cancel = [] {};
  
      const std::string dlc_info = fmt::format(
@@ -828,7 +840,7 @@ index 0b16c8a..a3202ad 100644
  
      if (!installed)
      {
-@@ -986,21 +986,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -986,21 +988,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
          {
              pkgi_dialog_question(
                      fmt::format(
@@ -858,7 +870,7 @@ index 0b16c8a..a3202ad 100644
                        game_and_dlc},
                       {"Cancel", cancel}});
          }
-@@ -1011,22 +1011,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
+@@ -1011,22 +1013,21 @@ void GameView::start_download_package(PspInstallMode psp_install_mode)
      if (!missing.empty())
      {
          pkgi_dialog_question(

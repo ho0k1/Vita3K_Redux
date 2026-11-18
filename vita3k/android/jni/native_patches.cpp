@@ -40,8 +40,13 @@ Java_org_vita3k_emulator_NativeLib_getPatchEntries(JNIEnv *env, jclass) {
     PatchEntries entries;
     EnabledPatches enabled;
     if (emuenv) {
-        entries = load_patch_entries(emuenv->patch_path);
-        enabled = load_enabled_patches(emuenv->patch_path);
+        try {
+            entries = load_patch_entries(emuenv->patch_path);
+            enabled = load_enabled_patches(emuenv->patch_path);
+        } catch (const std::exception &e) {
+            LOG_ERROR("Reading patches failed: {}", e.what());
+            entries.clear();
+        }
     }
 
     std::vector<const PatchEntry *> shown;
@@ -101,8 +106,13 @@ Java_org_vita3k_emulator_NativeLib_importPatchList(JNIEnv *env, jclass, jstring 
 
     const std::string xml = jstring_to_string(env, xml_str);
     PatchEntries entries;
-    if (xml.empty() || !parse_patch_entries(xml, entries))
+    try {
+        if (xml.empty() || !parse_patch_entries(xml, entries))
+            return -1;
+    } catch (const std::exception &e) {
+        LOG_ERROR("Patch list import failed: {}", e.what());
         return -1;
+    }
 
     const fs::path path = patchlist_xml_path(emuenv->patch_path);
     const fs::path temp_path = fs::path(path).concat(".tmp");
