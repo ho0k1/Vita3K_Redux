@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include "jni_string.h"
 #include "android_state.h"
 
 #include <app/functions.h>
@@ -43,8 +44,8 @@ Java_org_vita3k_emulator_NativeLib_getUsers(JNIEnv *env, jclass) {
 
     jsize index = 0;
     for (const auto &[id, user] : users) {
-        jstring user_id = env->NewStringUTF(id.c_str());
-        jstring name = env->NewStringUTF(user.name.c_str());
+        jstring user_id = new_jstring_utf8(env, id);
+        jstring name = new_jstring_utf8(env, user.name);
         const jboolean is_active = (id == emuenv->io.user_id) ? JNI_TRUE : JNI_FALSE;
 
         jobject user_obj = env->NewObject(user_class, ctor, user_id, name, is_active);
@@ -77,7 +78,7 @@ Java_org_vita3k_emulator_NativeLib_createUser(JNIEnv *env, jclass, jstring name_
         config::serialize_config(emuenv->cfg, emuenv->cfg.config_path);
     }
 
-    return env->NewStringUTF(new_id.c_str());
+    return new_jstring_utf8(env, new_id);
 }
 
 JNIEXPORT jboolean JNICALL

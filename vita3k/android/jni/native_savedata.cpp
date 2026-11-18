@@ -17,6 +17,7 @@
 
 // Import of encrypted PS Vita savedata and export of the emulator's savedata back to the Vita format.
 
+#include "jni_string.h"
 #include "android_state.h"
 
 #include <io/state.h>
@@ -36,7 +37,7 @@ fs::path savedata_root(EmuEnvState &emuenv) {
 }
 
 jstring to_jstring(JNIEnv *env, const std::string &s) {
-    return env->NewStringUTF(s.c_str());
+    return new_jstring_utf8(env, s);
 }
 } // namespace
 

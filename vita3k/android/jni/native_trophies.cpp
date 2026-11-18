@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include "jni_string.h"
 #include "android_state.h"
 
 #include <io/state.h>
@@ -130,9 +131,9 @@ void populate_trophy_collection_fields(JNIEnv *env, jobject obj, const TrophyCol
     const np::trophy::CollectionSnapshot &snapshot, jobjectArray trophies = nullptr) {
     const int progress_percent = snapshot.total > 0 ? (snapshot.unlocked * 100 / snapshot.total) : 0;
 
-    jstring np_com_id = env->NewStringUTF(snapshot.np_com_id.c_str());
-    jstring title = env->NewStringUTF(snapshot.title.c_str());
-    jstring icon_path = env->NewStringUTF(snapshot.icon_path.c_str());
+    jstring np_com_id = new_jstring_utf8(env, snapshot.np_com_id);
+    jstring title = new_jstring_utf8(env, snapshot.title);
+    jstring icon_path = new_jstring_utf8(env, snapshot.icon_path);
 
     env->SetObjectField(obj, fields.np_com_id, np_com_id);
     env->SetObjectField(obj, fields.title, title);
@@ -158,10 +159,10 @@ void populate_trophy_collection_fields(JNIEnv *env, jobject obj, const TrophyCol
 
 jobject new_trophy_object(JNIEnv *env, jclass cls, const TrophyFields &fields,
     const np::trophy::TrophyRecord &trophy, const std::string &np_com_id) {
-    jstring j_np_com_id = env->NewStringUTF(np_com_id.c_str());
-    jstring name = env->NewStringUTF(trophy.name.c_str());
-    jstring detail = env->NewStringUTF(trophy.detail.c_str());
-    jstring icon_path = env->NewStringUTF(trophy.icon_path.c_str());
+    jstring j_np_com_id = new_jstring_utf8(env, np_com_id);
+    jstring name = new_jstring_utf8(env, trophy.name);
+    jstring detail = new_jstring_utf8(env, trophy.detail);
+    jstring icon_path = new_jstring_utf8(env, trophy.icon_path);
 
     jobject obj = env->NewObject(cls, fields.ctor);
     env->SetObjectField(obj, fields.np_com_id, j_np_com_id);

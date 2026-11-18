@@ -17,6 +17,7 @@
 
 // Game patches from patchlist.xml (vita3k-patches): list, toggle, import.
 
+#include "jni_string.h"
 #include "android_state.h"
 
 #include <patch/patch.h>
@@ -58,7 +59,7 @@ Java_org_vita3k_emulator_NativeLib_getPatchEntries(JNIEnv *env, jclass) {
     jobjectArray result = env->NewObjectArray(static_cast<jsize>(shown.size() * PATCH_FIELDS), string_class, nullptr);
     jsize index = 0;
     const auto put = [&](const std::string &value) {
-        jstring text = env->NewStringUTF(value.c_str());
+        jstring text = new_jstring_utf8(env, value);
         env->SetObjectArrayElement(result, index++, text);
         env->DeleteLocalRef(text);
     };

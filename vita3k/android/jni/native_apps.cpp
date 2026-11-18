@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include "jni_string.h"
 #include "android_state.h"
 
 #include <app/functions.h>
@@ -61,11 +62,11 @@ Java_org_vita3k_emulator_NativeLib_getAppListDetailed(JNIEnv *env, jclass) {
             ? std::string()
             : (icon_path.is_absolute() ? icon_path.generic_string() : (emuenv->vita_fs_path / icon_path).generic_string());
 
-        jstring title_id = env->NewStringUTF(app.title_id.c_str());
-        jstring title = env->NewStringUTF(app.title.c_str());
-        jstring category = env->NewStringUTF(app.category.c_str());
-        jstring app_ver = env->NewStringUTF(app.app_ver.c_str());
-        jstring icon_path_str = env->NewStringUTF(icon_full.c_str());
+        jstring title_id = new_jstring_utf8(env, app.title_id);
+        jstring title = new_jstring_utf8(env, app.title);
+        jstring category = new_jstring_utf8(env, app.category);
+        jstring app_ver = new_jstring_utf8(env, app.app_ver);
+        jstring icon_path_str = new_jstring_utf8(env, icon_full);
 
         jobject app_info = env->NewObject(app_info_class, ctor,
             title_id,
