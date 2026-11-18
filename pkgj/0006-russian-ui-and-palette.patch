@@ -1524,19 +1524,39 @@ index 55824c5..38f3f78 100644
      // libcurl calls fcntl(sock, F_SETFD, FD_CLOEXEC) on every socket it opens.
      // PS Vita's SceNet layer does not support this and returns an error, which
 diff --git a/src/zrif.cpp b/src/zrif.cpp
-index eb2e449..668f158 100644
+index eb2e449..71f8d0e 100644
 --- a/src/zrif.cpp
 +++ b/src/zrif.cpp
-@@ -219,6 +219,12 @@ int pkgi_zrif_decode(
+@@ -1,3 +1,4 @@
++#include <vector>
+ #include "zrif.hpp"
+ 
+ extern "C"
+@@ -218,11 +219,24 @@ static uint32_t zlib_inflate(
+ int pkgi_zrif_decode(
          const char* str, uint8_t* rif, char* error, uint32_t error_size)
  {
-     uint8_t raw[1024];
-+    // base64 expands 3 bytes to 4 chars: longer input would overflow raw
-+    if (strlen(str) > sizeof(raw) / 3 * 4)
+-    uint8_t raw[1024];
+-    uint32_t len = base64_decode(str, raw);
++    // The decoded size depends on the string, so the buffer is sized from it
++    // instead of a fixed 1 KiB (a long zRIF used to overflow the stack)
++    const size_t str_len = strlen(str);
++    if (str_len == 0 || str_len > 64 * 1024)
 +    {
-+        strncpy(error, "zRIF is too long, is it corrupted?", error_size);
++        strncpy(error, "zRIF has a wrong length", error_size);
 +        return 0;
 +    }
-     uint32_t len = base64_decode(str, raw);
++    std::vector<uint8_t> raw(str_len / 4 * 3 + 8);
++    uint32_t len = base64_decode(str, raw.data());
++    if (len > raw.size())
++    {
++        strncpy(error, "zRIF is corrupted", error_size);
++        return 0;
++    }
  
      uint8_t out[1024 + sizeof(zrif_dict)];
+-    len = zlib_inflate(raw, len, out, sizeof(out), error, error_size);
++    len = zlib_inflate(raw.data(), len, out, sizeof(out), error, error_size);
+     if (len != 512 && len != 1024)
+     {
+         strncpy(error, "wrong size of zRIF, is it corrupted?", error_size);
