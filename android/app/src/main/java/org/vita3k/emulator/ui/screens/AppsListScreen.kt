@@ -667,6 +667,8 @@ private fun AppsListTitle(appVersion: String) {
     }
 }
 
+private const val SHOW_PATCH_MANAGER = false
+
 @Composable
 private fun AppsListOverflowMenu(
     expanded: Boolean,
@@ -721,16 +723,19 @@ private fun AppsListOverflowMenu(
                 },
                 onClick = onUserManagement
             )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.apps_list_menu_patches)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Build,
-                        contentDescription = null
-                    )
-                },
-                onClick = onPatches
-            )
+            // The patch manager crashed the app on the first tests; hidden until the cause is found
+            if (SHOW_PATCH_MANAGER) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.apps_list_menu_patches)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = null
+                        )
+                    },
+                    onClick = onPatches
+                )
+            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.apps_list_menu_savedata)) },
                 leadingIcon = {
