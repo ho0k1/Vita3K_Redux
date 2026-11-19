@@ -659,6 +659,7 @@ void ScreenRenderer::set_filter(const std::string_view &filter) {
         this->filter = std::make_unique<BilinearScreenFilter>(*this);
 
     this->filter->init();
+    LOG_INFO("[FILTER] screen filter requested \"{}\" -> active \"{}\"", filter, this->filter->get_name());
 }
 
 void ScreenRenderer::create_layout_sync() {
