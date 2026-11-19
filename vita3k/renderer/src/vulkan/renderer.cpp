@@ -1708,8 +1708,20 @@ void VKState::change_resolution(float new_multiplier) {
 // (not below 1x, at most two steps), and comes back up when the phone has been cool for two minutes.
 // Only ever changes at a game frame boundary, and never more often than every 45 s.
 void VKState::apply_adaptive_resolution() {
-    if (!adaptive_resolution.load(std::memory_order_relaxed) || !last_frame_was_game)
+    if (!last_frame_was_game)
         return;
+    // the option was switched off while a step was active: give the user's resolution back
+    if (!adaptive_resolution.load(std::memory_order_relaxed)) {
+        if (adapt_level != 0 && adapt_base != 0.0f && !(context && static_cast<VKContext *>(context)->is_recording)) {
+            const float restore = adapt_base;
+            adapt_level = 0;
+            adapt_base = 0.0f;
+            adapt_applied = 0.0f;
+            if (restore != res_multiplier)
+                change_resolution(restore);
+        }
+        return;
+    }
     // a scene still being recorded holds framebuffers and views of the old size: wait for the next boundary
     if (context && static_cast<VKContext *>(context)->is_recording)
         return;
@@ -1721,8 +1733,12 @@ void VKState::apply_adaptive_resolution() {
     constexpr int max_level = 2;
 
     const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    if (adapt_base == 0.0f)
+    // the user picked another scale meanwhile: start over from it
+    if (adapt_base == 0.0f || (adapt_applied != 0.0f && res_multiplier != adapt_applied)) {
         adapt_base = res_multiplier;
+        adapt_level = 0;
+        adapt_applied = 0.0f;
+    }
     const int thermal = session_diag::thermal_status();
 
     int target = adapt_level;
@@ -1750,8 +1766,10 @@ void VKState::apply_adaptive_resolution() {
     adapt_last_change_us = now_us;
     adapt_hot_since_us = 0;
     adapt_cool_since_us = 0;
-    if (new_multiplier != res_multiplier)
+    if (new_multiplier != res_multiplier) {
         change_resolution(new_multiplier);
+        adapt_applied = res_multiplier;
+    }
 }
 
 void VKState::swap_window() {

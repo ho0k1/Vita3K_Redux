@@ -236,6 +236,9 @@ struct RenderTarget {
     bool has_macroblock_sync;
     uint16_t macroblock_width;
     uint16_t macroblock_height;
+    // the same sizes before the resolution multiplier, to rescale them when it changes
+    uint16_t macroblock_guest_width = 0;
+    uint16_t macroblock_guest_height = 0;
     virtual ~RenderTarget() = default;
 };
 

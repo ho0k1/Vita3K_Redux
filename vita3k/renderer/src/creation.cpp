@@ -132,6 +132,8 @@ COMMAND(handle_create_render_target) {
         uint16_t nb_macroblocks_x = (params->flags >> 8) & 0b111;
         uint16_t nb_macroblocks_y = (params->flags >> 12) & 0b111;
 
+        (*render_target)->macroblock_guest_width = params->width / nb_macroblocks_x;
+        (*render_target)->macroblock_guest_height = params->height / nb_macroblocks_y;
         // the width and height should be multiple of 128
         (*render_target)->macroblock_width = static_cast<uint16_t>((params->width / nb_macroblocks_x) * renderer.res_multiplier);
         (*render_target)->macroblock_height = static_cast<uint16_t>((params->height / nb_macroblocks_y) * renderer.res_multiplier);

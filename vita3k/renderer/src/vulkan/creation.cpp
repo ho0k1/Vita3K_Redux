@@ -243,6 +243,10 @@ void VKRenderTarget::resize_for_resolution(VKState &state) {
     height = static_cast<uint32_t>(guest_height * state.res_multiplier);
     base_width = width;
     base_height = height;
+    if (has_macroblock_sync) {
+        macroblock_width = static_cast<uint16_t>(macroblock_guest_width * state.res_multiplier);
+        macroblock_height = static_cast<uint16_t>(macroblock_guest_height * state.res_multiplier);
+    }
 
     color = vkutil::Image(width, height, vk::Format::eR8G8B8A8Unorm);
     depthstencil = vkutil::Image(width, height, state.deep_stencil_use);
