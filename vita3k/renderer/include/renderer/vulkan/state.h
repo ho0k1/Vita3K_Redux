@@ -89,6 +89,14 @@ struct VKState : public renderer::State {
     int64_t adapt_cool_since_us = 0;
     int64_t adapt_last_change_us = 0;
     int64_t adapt_last_log_us = 0;
+    // frame-pace controller: windows of ~5 s of game frames compared with the best pace this game has shown
+    int64_t adapt_win_start_us = 0;
+    int adapt_win_frames = 0;
+    double adapt_best_period_us = 0.0;
+    int adapt_slow_windows = 0;
+    int adapt_fast_windows = 0;
+    int adapt_probe_failures = 0;
+    int64_t adapt_last_raise_us = 0;
     float adapt_applied = 0.0f; // the scale this controller set last, to notice when the user changes it
     void apply_adaptive_resolution() override;
     void change_resolution(float new_multiplier);

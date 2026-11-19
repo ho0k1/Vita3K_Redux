@@ -1726,6 +1726,34 @@ void VKState::apply_adaptive_resolution() {
         }
         return;
     }
+    // frame pace: game frames per ~5 s window, judged against the best pace this game has shown
+    const int64_t pace_now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    bool window_closed = false;
+    if (adapt_win_start_us == 0)
+        adapt_win_start_us = pace_now_us;
+    ++adapt_win_frames;
+    if (pace_now_us - adapt_win_start_us >= 5'000'000) {
+        const double period_us = static_cast<double>(pace_now_us - adapt_win_start_us) / adapt_win_frames;
+        const int frames = adapt_win_frames;
+        adapt_win_start_us = pace_now_us;
+        adapt_win_frames = 0;
+        // loading screens and pauses make windows with very few frames: they say nothing about the load
+        if (frames >= 20 && period_us <= 200'000.0) {
+            window_closed = true;
+            if (adapt_best_period_us == 0.0 || period_us < adapt_best_period_us)
+                adapt_best_period_us = period_us;
+            else
+                adapt_best_period_us *= 1.01; // forget slowly, scenes differ
+            // the pace that gives 60 fps out: 30 game fps when the frame generator doubles it, else 60. A window is slow
+            // only when it misses that AND the game has been faster before (a game capped at 30 fps is not "slow")
+            const double target_period_us = frame_generation.load(std::memory_order_relaxed) ? 33'333.0 : 16'667.0;
+            const bool slow = period_us > target_period_us * 1.12 && period_us > adapt_best_period_us * 1.15;
+            const bool fast = period_us <= target_period_us * 1.05 || period_us <= adapt_best_period_us * 1.10;
+            adapt_slow_windows = slow ? adapt_slow_windows + 1 : 0;
+            adapt_fast_windows = fast ? adapt_fast_windows + 1 : 0;
+        }
+    }
+
     // a scene still being recorded holds framebuffers and views of the old size: wait for the next boundary
     if (context && static_cast<VKContext *>(context)->is_recording)
         return;
@@ -1762,6 +1790,24 @@ void VKState::apply_adaptive_resolution() {
         adapt_hot_since_us = 0;
         adapt_cool_since_us = 0;
     }
+    // frame pace rules (only when the thermal rules did not decide): two slow windows in a row (10 s) lower the
+    // scale one step; after a quiet minute (longer after each failed attempt) one step back up is tried
+    if (target == adapt_level && window_closed) {
+        constexpr int64_t pace_gap_us = 15'000'000;
+        const int64_t probe_hold_us = 60'000'000LL << adapt_probe_failures;
+        if (adapt_slow_windows >= 2 && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
+            target = adapt_level + 1;
+            if (adapt_last_raise_us != 0 && now_us - adapt_last_raise_us < 30'000'000)
+                adapt_probe_failures = std::min(adapt_probe_failures + 1, 3);
+            LOG_INFO("[ADAPT] frame pace is slower than the best {:.1f} ms: lowering (probe failures {})", adapt_best_period_us / 1000.0, adapt_probe_failures);
+            adapt_slow_windows = 0;
+        } else if (adapt_level > 0 && thermal <= 2 && adapt_fast_windows >= 3 && now_us - adapt_last_change_us >= probe_hold_us) {
+            target = adapt_level - 1;
+            adapt_last_raise_us = now_us;
+            adapt_fast_windows = 0;
+            LOG_INFO("[ADAPT] frame pace is good: trying one step up (hold {} s)", probe_hold_us / 1'000'000);
+        }
+    }
     if (target == adapt_level) {
         // visible in the logs: why the scale has not come back yet
         if (adapt_level > 0 && now_us - adapt_last_log_us >= 60'000'000) {
@@ -1777,6 +1823,8 @@ void VKState::apply_adaptive_resolution() {
     adapt_last_change_us = now_us;
     adapt_hot_since_us = 0;
     adapt_cool_since_us = 0;
+    adapt_slow_windows = 0;
+    adapt_fast_windows = 0;
     if (new_multiplier != res_multiplier) {
         change_resolution(new_multiplier);
         adapt_applied = res_multiplier;
