@@ -23,7 +23,7 @@ class EmulatorConfig {
     @JvmField var vSync: Boolean = true
     @JvmField var anisotropicFiltering: Int = 1
     @JvmField var asyncPipelineCompilation: Boolean = true
-    @JvmField var adaptiveResolution: Boolean = false
+    @JvmField var adaptiveResolution: Boolean = true
     @JvmField var frameGeneration: Boolean = true
     @JvmField var accurateThreadScheduling: Boolean = true
     @JvmField var guestCores: Int = 3

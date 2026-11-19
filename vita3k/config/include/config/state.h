@@ -80,7 +80,7 @@ struct Config {
         bool v_sync = true;
         int anisotropic_filtering = 1;
         bool async_pipeline_compilation = true;
-        bool adaptive_resolution = false;
+        bool adaptive_resolution = true;
         bool frame_generation = true;
         bool accurate_thread_scheduling = true;
         int preempt_on_wake_us = 1000;

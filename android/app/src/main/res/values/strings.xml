@@ -406,7 +406,7 @@
     <string name="settings_gpu_resolution_preset_quality">Quality 2.5x</string>
     <string name="settings_gpu_resolution_preset_custom">Custom</string>
     <string name="settings_gpu_adaptive_resolution">Adaptive resolution (experimental)</string>
-    <string name="settings_gpu_adaptive_resolution_desc">When Android reports severe throttling, the emulator lowers the internal resolution by 0.5x up to twice (never below 1x) and raises it again after the phone cools down. The change happens between frames and can briefly cause artifacts or a black frame. See [ADAPT] in the log.</string>
+    <string name="settings_gpu_adaptive_resolution_desc">When Android reports severe throttling, the emulator lowers the internal resolution by 0.5x up to three times (never below 1x) and raises it again after the phone cools down. The change happens between frames and can briefly cause artifacts or a black frame. See [ADAPT] in the log.</string>
     <string name="settings_gpu_resolution_val">%1$d\u00D7%2$d (%3$s\u00D7)</string>
     <string name="settings_gpu_anisotropic">Anisotropic Filtering</string>
     <string name="settings_gpu_anisotropic_desc">Technique to increase the sharpness of textures which are sloped relative to the viewer.\nIt has no drawbacks but can impact performance on older GPUs.</string>

@@ -1416,7 +1416,9 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
     if (new_game_frame) {
         constexpr int64_t cap_period_us = 22222; // 45 game fps: a quarter lost, not half
         constexpr int64_t cap_max_sleep_us = 20000;
-        const bool cap_on = session_diag::thermal_status() >= 3;
+        // off: the DOA5 log showed it pinning the output at exactly 45 fps; resolution steps handle the heat instead
+        constexpr bool thermal_cap_enabled = false;
+        const bool cap_on = thermal_cap_enabled && session_diag::thermal_status() >= 3;
         int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         if (cap_on != thermal_cap_active) {
             thermal_cap_active = cap_on;
@@ -1705,8 +1707,8 @@ void VKState::change_resolution(float new_multiplier) {
 }
 
 // Adaptive resolution: while Android reports severe throttling the internal scale goes down one 0.5x step at a time
-// (not below 1x, at most two steps), and comes back up when the phone has been cool for two minutes.
-// Only ever changes at a game frame boundary, and never more often than every 45 s.
+// (not below 1x, at most three steps), and comes back up when the phone has been cool for two minutes.
+// Only ever changes at a game frame boundary, and never more often than every 30 s.
 void VKState::apply_adaptive_resolution() {
     if (!last_frame_was_game)
         return;
@@ -1726,11 +1728,11 @@ void VKState::apply_adaptive_resolution() {
     if (context && static_cast<VKContext *>(context)->is_recording)
         return;
 
-    constexpr int64_t hot_delay_us = 15'000'000;
+    constexpr int64_t hot_delay_us = 10'000'000;
     constexpr int64_t cool_delay_us = 120'000'000;
-    constexpr int64_t min_change_gap_us = 45'000'000;
+    constexpr int64_t min_change_gap_us = 30'000'000;
     constexpr float step = 0.5f;
-    constexpr int max_level = 2;
+    constexpr int max_level = 3;
 
     const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     // the user picked another scale meanwhile: start over from it

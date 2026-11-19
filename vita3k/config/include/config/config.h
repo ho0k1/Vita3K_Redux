@@ -169,7 +169,7 @@ using PhysicalKeyCode = input::PhysicalKeyCode;
     code(int, "anisotropic-filtering", 1, anisotropic_filtering)                                        \
     code(bool, "texture-cache", true, texture_cache)                                                    \
     code(bool, "async-pipeline-compilation", true, async_pipeline_compilation)                          \
-    code(bool, "adaptive-resolution", false, adaptive_resolution)                                       \
+    code(bool, "adaptive-resolution-auto", true, adaptive_resolution)                                       \
     code(bool, "frame-generation", true, frame_generation)                                               \
     code(bool, "accurate-thread-scheduling", true, accurate_thread_scheduling)                          \
     code(int, "preempt-on-wake-us", 1000, preempt_on_wake_us)                                             \
