@@ -46,6 +46,8 @@ import org.vita3k.emulator.data.CustomDriverLoadStatus
 import org.vita3k.emulator.data.EmulatorConfig
 import org.vita3k.emulator.data.LogExporter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
 import org.vita3k.emulator.data.VitaDocumentsProvider
 import org.vita3k.emulator.data.FirmwareLinks
@@ -835,6 +837,7 @@ private fun GpuSettingsSection(
                 // cleared from its own entry in the app list (AppAction.DELETE_SHADER_CACHE).
                 var confirmClearShaderCache by remember { mutableStateOf(false) }
                 var clearShaderCacheResult by remember { mutableStateOf<Boolean?>(null) }
+                val clearShaderScope = rememberCoroutineScope()
                 val clearTitle = stringResource(R.string.settings_gpu_clear_shader_cache)
                 SettingsActionRow(
                     title = clearTitle,
@@ -857,7 +860,10 @@ private fun GpuSettingsSection(
                         confirmButton = {
                             TextButton(onClick = {
                                 confirmClearShaderCache = false
-                                clearShaderCacheResult = NativeLib.clearShaderCache()
+                                // deleting thousands of cached shader files must not freeze the UI thread
+                                clearShaderScope.launch {
+                                    clearShaderCacheResult = withContext(Dispatchers.IO) { NativeLib.clearShaderCache() }
+                                }
                             }) { Text(stringResource(R.string.settings_gpu_clear_shader_cache_action)) }
                         },
                         dismissButton = {
