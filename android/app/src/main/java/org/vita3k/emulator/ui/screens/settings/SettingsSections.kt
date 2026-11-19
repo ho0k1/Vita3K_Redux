@@ -713,6 +713,24 @@ private fun GpuSettingsSection(
             help = null,
             onShowHelp = onShowHelp
         ) {
+            val presetValues = listOf(1.5f, 2.0f, 2.5f)
+            val presetTitle = stringResource(R.string.settings_gpu_resolution_preset)
+            val presetOptions = listOf(
+                stringResource(R.string.settings_gpu_resolution_preset_performance),
+                stringResource(R.string.settings_gpu_resolution_preset_balanced),
+                stringResource(R.string.settings_gpu_resolution_preset_quality),
+                stringResource(R.string.settings_gpu_resolution_preset_custom)
+            )
+            SettingsChoiceField(
+                title = presetTitle,
+                options = presetOptions,
+                selectedIndex = presetValues.indexOfFirst { it == cfg.resolutionMultiplier }.let { if (it < 0) presetValues.size else it },
+                onSelect = { idx ->
+                    if (idx in presetValues.indices) onUpdate { resolutionMultiplier = presetValues[idx] }
+                },
+                help = helpEntry(presetTitle, stringResource(R.string.settings_gpu_resolution_preset_desc)),
+                onShowHelp = onShowHelp
+            )
             val sliderValue = (cfg.resolutionMultiplier * 4f).roundToInt().coerceIn(2, 32).toFloat()
             val multiplier = sliderValue / 4f
             SettingsSliderRow(

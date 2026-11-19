@@ -399,6 +399,12 @@
     <string name="settings_gpu_screen_filter_desc">Select the final image filter to apply. VSS is a sharp edge-aware upscaler for Vulkan (based on Snapdragon Game Super Resolution) that is light on Adreno GPUs.</string>
     <string name="settings_gpu_resolution">Internal Resolution Upscaling</string>
     <string name="settings_gpu_resolution_desc">Scale the games resolution by a multiplier.\nExperimental: apps are not guaranteed to render properly at more than 1x.</string>
+    <string name="settings_gpu_resolution_preset">Resolution mode</string>
+    <string name="settings_gpu_resolution_preset_desc">Ready-made scales: Performance 1.5x, Balanced 2x, Quality 2.5x. A lower scale runs cooler and faster; the screen filter (for example VSS) stretches the image to the display. Use the slider below for an exact value.</string>
+    <string name="settings_gpu_resolution_preset_performance">Performance 1.5x</string>
+    <string name="settings_gpu_resolution_preset_balanced">Balanced 2x</string>
+    <string name="settings_gpu_resolution_preset_quality">Quality 2.5x</string>
+    <string name="settings_gpu_resolution_preset_custom">Custom</string>
     <string name="settings_gpu_resolution_val">%1$d\u00D7%2$d (%3$s\u00D7)</string>
     <string name="settings_gpu_anisotropic">Anisotropic Filtering</string>
     <string name="settings_gpu_anisotropic_desc">Technique to increase the sharpness of textures which are sloped relative to the viewer.\nIt has no drawbacks but can impact performance on older GPUs.</string>

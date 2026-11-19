@@ -408,6 +408,12 @@
     <string name="settings_gpu_screen_filter_desc">Выберите итоговый фильтр изображения. VSS — резкий апскейлер с учётом контуров для Vulkan (по мотивам Snapdragon Game Super Resolution), лёгкий для GPU Adreno.</string>
     <string name="settings_gpu_resolution">Масштабирование внутреннего разрешения</string>
     <string name="settings_gpu_resolution_desc">Увеличивает разрешение игры в заданное число раз.\nЭкспериментально: корректный рендеринг при масштабе больше 1x не гарантируется.</string>
+    <string name="settings_gpu_resolution_preset">Режим разрешения</string>
+    <string name="settings_gpu_resolution_preset_desc">Готовые значения масштаба: «Производительность» 1,5×, «Баланс» 2×, «Качество» 2,5×. Меньший масштаб меньше греет телефон и даёт больше FPS; экранный фильтр (например VSS) растягивает картинку до размера экрана. Точное значение задаётся ползунком ниже.</string>
+    <string name="settings_gpu_resolution_preset_performance">Производительность 1,5×</string>
+    <string name="settings_gpu_resolution_preset_balanced">Баланс 2×</string>
+    <string name="settings_gpu_resolution_preset_quality">Качество 2,5×</string>
+    <string name="settings_gpu_resolution_preset_custom">Свой</string>
     <string name="settings_gpu_resolution_val">%1$d×%2$d (%3$s×)</string>
     <string name="settings_gpu_anisotropic">Анизотропная фильтрация</string>
     <string name="settings_gpu_anisotropic_desc">Повышает резкость текстур, расположенных под углом к наблюдателю.\nНедостатков нет, но на старых GPU может снизить производительность.</string>
