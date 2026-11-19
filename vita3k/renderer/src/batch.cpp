@@ -404,6 +404,7 @@ static void render_loop(renderer::State &state, DisplayState &display, GxmState 
             frame_meter.end_render();
             state.swap_window();
             frame_meter.end_present();
+            state.apply_adaptive_resolution();
             state.async_flip_requested.store(false, std::memory_order_relaxed);
 
 #ifdef TRACY_ENABLE

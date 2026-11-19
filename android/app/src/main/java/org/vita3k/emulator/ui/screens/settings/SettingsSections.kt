@@ -559,6 +559,16 @@ private fun GpuSettingsSection(
                     onShowHelp = onShowHelp
                 )
                 SettingsToggleRow(
+                    title = stringResource(R.string.settings_gpu_adaptive_resolution),
+                    checked = cfg.adaptiveResolution,
+                    onCheckedChange = { onUpdate { adaptiveResolution = it } },
+                    help = SettingsHelpEntry(
+                        title = stringResource(R.string.settings_gpu_adaptive_resolution),
+                        body = stringResource(R.string.settings_gpu_adaptive_resolution_desc)
+                    ),
+                    onShowHelp = onShowHelp
+                )
+                SettingsToggleRow(
                     title = stringResource(R.string.settings_gpu_async_pipeline),
                     checked = cfg.asyncPipelineCompilation,
                     onCheckedChange = { onUpdate { asyncPipelineCompilation = it } },

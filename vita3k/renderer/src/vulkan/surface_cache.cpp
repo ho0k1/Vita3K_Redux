@@ -491,6 +491,45 @@ VKSurfaceCache::VKSurfaceCache(VKState &state)
     ds_surface_queue.init(max_surfaces_allowed);
 }
 
+void VKSurfaceCache::purge_for_resolution_change() {
+    // queued casts only copy between surfaces that are about to disappear
+    pending_casts.clear();
+    pending_ds_scene = nullptr;
+    pending_ds_scene_stores = false;
+    last_written_surface = nullptr;
+    cpu_surfaces_changed.clear();
+
+    for (auto &[cube_address, cube] : cube_textures)
+        cube.texture.destroy();
+    cube_textures.clear();
+
+    for (auto &item : color_surface_queue.items) {
+        ColorSurfaceCacheInfo &info = item.content;
+        if (info.data)
+            color_address_lookup.erase(info.data.address());
+        if (info.texture.image)
+            destroy_surface(info);
+        info.data = Ptr<void>();
+        info.has_phase_view = false;
+    }
+    color_address_lookup.clear();
+
+    for (auto &item : ds_surface_queue.items) {
+        DepthStencilSurfaceCacheInfo &info = item.content;
+        if (info.surface.depth_data)
+            depth_address_lookup.erase(info.surface.depth_data.address());
+        if (info.surface.stencil_data)
+            stencil_address_lookup.erase(info.surface.stencil_data.address());
+        if (info.texture.image)
+            destroy_surface(info);
+        info.surface.depth_data = decltype(info.surface.depth_data)();
+        info.surface.stencil_data = decltype(info.surface.stencil_data)();
+    }
+    depth_address_lookup.clear();
+    stencil_address_lookup.clear();
+    shader_written_memory.clear();
+}
+
 void VKSurfaceCache::cleanup() {
     for (auto &[key, fb] : framebuffer_array) {
         state.device.destroy(fb.standard);

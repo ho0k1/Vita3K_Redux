@@ -47,6 +47,7 @@ void copy_global_to_current(Config::CurrentConfig &current, const Config &cfg) {
     current.v_sync = cfg.v_sync;
     current.anisotropic_filtering = cfg.anisotropic_filtering;
     current.async_pipeline_compilation = cfg.async_pipeline_compilation;
+    current.adaptive_resolution = cfg.adaptive_resolution;
     current.frame_generation = cfg.frame_generation;
     current.accurate_thread_scheduling = cfg.accurate_thread_scheduling;
     current.preempt_on_wake_us = cfg.preempt_on_wake_us;
@@ -96,6 +97,7 @@ void copy_current_to_global(Config &cfg, const Config::CurrentConfig &current) {
     cfg.v_sync = current.v_sync;
     cfg.anisotropic_filtering = current.anisotropic_filtering;
     cfg.async_pipeline_compilation = current.async_pipeline_compilation;
+    cfg.adaptive_resolution = current.adaptive_resolution;
     cfg.frame_generation = current.frame_generation;
     cfg.accurate_thread_scheduling = current.accurate_thread_scheduling;
     cfg.preempt_on_wake_us = current.preempt_on_wake_us;
@@ -205,6 +207,7 @@ bool load_custom_config(Config::CurrentConfig &out, const fs::path &config_path,
         out.v_sync = gpu.attribute("v-sync").as_bool();
         out.anisotropic_filtering = gpu.attribute("anisotropic-filtering").as_int();
         out.async_pipeline_compilation = gpu.attribute("async-pipeline-compilation").as_bool();
+        out.adaptive_resolution = gpu.attribute("adaptive-resolution").as_bool();
         out.frame_generation = gpu.attribute("frame-generation").as_bool(true);
         out.accurate_thread_scheduling = gpu.attribute("accurate-thread-scheduling").as_bool(true);
         out.preempt_on_wake_us = gpu.attribute("preempt-on-wake-us").as_int(1000);
@@ -297,6 +300,7 @@ bool save_custom_config(const Config::CurrentConfig &cc, const fs::path &config_
     gpu_child.append_attribute("v-sync") = cc.v_sync;
     gpu_child.append_attribute("anisotropic-filtering") = cc.anisotropic_filtering;
     gpu_child.append_attribute("async-pipeline-compilation") = cc.async_pipeline_compilation;
+    gpu_child.append_attribute("adaptive-resolution") = cc.adaptive_resolution;
     gpu_child.append_attribute("frame-generation") = cc.frame_generation;
     gpu_child.append_attribute("accurate-thread-scheduling") = cc.accurate_thread_scheduling;
     gpu_child.append_attribute("preempt-on-wake-us") = cc.preempt_on_wake_us;

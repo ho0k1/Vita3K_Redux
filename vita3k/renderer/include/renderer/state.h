@@ -137,6 +137,8 @@ struct State {
     std::atomic<bool> async_flip_requested{ false };
     // Vita3K Redux frame generation (VFG): show an interpolated frame between two game frames (Vulkan only)
     std::atomic<bool> frame_generation{ false };
+    // Redux: lower the internal resolution while the phone is overheating (experimental)
+    std::atomic<bool> adaptive_resolution{ false };
     // steady clock microseconds, 0 = none; process_batches returns once it has passed so a held back frame can be presented
     std::atomic<int64_t> present_deadline_us{ 0 };
     // incremented for every new game frame (display redraws of a paused game do not count)
@@ -212,6 +214,8 @@ struct State {
     virtual void set_anisotropic_filtering(int anisotropic_filtering) = 0;
     virtual int get_max_2d_texture_width() = 0;
     virtual void set_async_compilation(bool enable) {}
+    // called by the render thread right after a frame was presented; may change res_multiplier
+    virtual void apply_adaptive_resolution() {}
     void set_surface_sync_state(bool disable) {
         disable_surface_sync = disable;
     }

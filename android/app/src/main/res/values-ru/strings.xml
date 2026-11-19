@@ -414,6 +414,8 @@
     <string name="settings_gpu_resolution_preset_balanced">Баланс 2×</string>
     <string name="settings_gpu_resolution_preset_quality">Качество 2,5×</string>
     <string name="settings_gpu_resolution_preset_custom">Свой</string>
+    <string name="settings_gpu_adaptive_resolution">Адаптивное разрешение (экспериментально)</string>
+    <string name="settings_gpu_adaptive_resolution_desc">При сильном перегреве телефона (Android сообщает о троттлинге) эмулятор сам снижает внутреннее разрешение на 0,5× до двух раз, но не ниже 1×, а когда телефон остыл — возвращает. Смена происходит между кадрами и может на мгновение дать артефакты или чёрный кадр. В логе строки [ADAPT].</string>
     <string name="settings_gpu_resolution_val">%1$d×%2$d (%3$s×)</string>
     <string name="settings_gpu_anisotropic">Анизотропная фильтрация</string>
     <string name="settings_gpu_anisotropic_desc">Повышает резкость текстур, расположенных под углом к наблюдателю.\nНедостатков нет, но на старых GPU может снизить производительность.</string>

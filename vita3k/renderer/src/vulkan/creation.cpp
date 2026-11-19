@@ -179,6 +179,13 @@ VKRenderTarget::VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &p
     height = static_cast<uint32_t>(params.height * state.res_multiplier);
     base_width = width;
     base_height = height;
+    guest_width = params.width;
+    guest_height = params.height;
+    registry = state.rt_registry;
+    {
+        const std::lock_guard<std::mutex> lock(registry->mutex);
+        registry->targets.push_back(this);
+    }
 
     vk::ImageUsageFlags color_usage = vk::ImageUsageFlagBits::eColorAttachment;
     if (state.features.support_shader_interlock)
@@ -227,7 +234,45 @@ VKRenderTarget::VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &p
     }
 }
 
+void VKRenderTarget::resize_for_resolution(VKState &state) {
+    state.surface_cache.destroy_associated_framebuffers(this);
+    color.destroy();
+    depthstencil.destroy();
+
+    width = static_cast<uint32_t>(guest_width * state.res_multiplier);
+    height = static_cast<uint32_t>(guest_height * state.res_multiplier);
+    base_width = width;
+    base_height = height;
+
+    color = vkutil::Image(width, height, vk::Format::eR8G8B8A8Unorm);
+    depthstencil = vkutil::Image(width, height, state.deep_stencil_use);
+
+    vk::ImageUsageFlags color_usage = vk::ImageUsageFlagBits::eColorAttachment;
+    if (state.features.support_shader_interlock)
+        color_usage |= vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eStorage;
+    else
+        color_usage |= vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eTransientAttachment;
+    color.init_image(color_usage);
+    if (multisample_mode == SCE_GXM_MULTISAMPLE_4X) {
+        depthstencil.width *= 2;
+        depthstencil.height *= 2;
+    }
+    if (state.features.support_depth_mirror)
+        depthstencil.init_image(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransferSrc);
+    else
+        depthstencil.init_image(vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eTransientAttachment);
+
+    vk::CommandBuffer cmd_buffer = vkutil::create_single_time_command(state.device, state.general_command_pool);
+    color.transition_to_discard(cmd_buffer, vkutil::ImageLayout::ColorAttachmentReadWrite);
+    depthstencil.transition_to_discard(cmd_buffer, vkutil::ImageLayout::DepthStencilAttachment, vkutil::ds_subresource_range);
+    vkutil::end_single_time_command(state.device, state.general_queue, state.general_command_pool, cmd_buffer);
+}
+
 VKRenderTarget::~VKRenderTarget() {
+    if (registry) {
+        const std::lock_guard<std::mutex> lock(registry->mutex);
+        std::erase(registry->targets, this);
+    }
     for (auto &fence : fences)
         device.destroy(fence);
     fences.clear();

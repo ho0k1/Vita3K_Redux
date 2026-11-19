@@ -21,10 +21,13 @@
 
 #include <chrono>
 #include <deque>
+#include <memory>
+#include <mutex>
 #include <renderer/types.h>
 #include <shader/uniform_block.h>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 #include <vkutil/objects.h>
 
 struct MemState;
@@ -516,6 +519,12 @@ struct VKContext : public renderer::Context {
     void fill_half_pixel_strips();
 };
 
+// the live render targets; shared with the targets themselves so one destroyed after the renderer is still safe
+struct RenderTargetRegistry {
+    std::mutex mutex;
+    std::vector<VKRenderTarget *> targets;
+};
+
 struct VKRenderTarget : public renderer::RenderTarget {
     vk::Device device;
     uint16_t width;
@@ -538,8 +547,15 @@ struct VKRenderTarget : public renderer::RenderTarget {
     // the command buffer index we're at in a frame
     int cmd_buffer_idx = 0;
 
+    // size the guest asked for (before the resolution multiplier)
+    uint16_t guest_width = 0;
+    uint16_t guest_height = 0;
+    std::shared_ptr<RenderTargetRegistry> registry;
+
     VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &params);
     ~VKRenderTarget() override;
+    // recreate the images for the current res_multiplier (the GPU must be idle)
+    void resize_for_resolution(VKState &state);
 };
 
 struct VKFragmentProgram : public renderer::FragmentProgram {

@@ -691,6 +691,7 @@ void apply_renderer_config(EmuEnvState &emuenv) {
     r.stretch_hd_pixel_perfect(cc.fullscreen_hd_res_pixel_perfect);
     r.set_async_compilation(cc.async_pipeline_compilation || redux_force_async_pipelines);
     r.frame_generation = cc.frame_generation;
+    r.adaptive_resolution = cc.adaptive_resolution;
     r.get_texture_cache()->set_replacement_state(cc.import_textures, cc.export_textures, cc.export_as_png);
 #ifdef __ANDROID__
     if (r.support_custom_drivers())
@@ -782,6 +783,7 @@ void apply_runtime_settings(EmuEnvState &emuenv) {
     r.stretch_hd_pixel_perfect(cc.fullscreen_hd_res_pixel_perfect);
     r.set_async_compilation(cc.async_pipeline_compilation || redux_force_async_pipelines);
     r.frame_generation = cc.frame_generation;
+    r.adaptive_resolution = cc.adaptive_resolution;
     r.get_texture_cache()->set_replacement_state(cc.import_textures, cc.export_textures, cc.export_as_png);
 #ifdef __ANDROID__
     if (r.support_custom_drivers())

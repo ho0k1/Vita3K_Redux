@@ -1407,19 +1407,20 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
     // pause and common dialog redraws also request a display, only the frame counter tells the real game frames apart
     const uint64_t game_frame_serial = game_frame_counter.load(std::memory_order_relaxed);
     const bool new_game_frame = display_requested && game_frame_serial != vfg_last_serial;
+    last_frame_was_game = new_game_frame;
     if (display_requested)
         vfg_last_serial = game_frame_serial;
 
-    // Thermal cap: while Android reports severe throttling (THERMAL >= 3), game frames are spaced at least 33.3 ms
-    // apart. An even 30 game fps (the frame generator fills in the rest) beats a GPU that swings between 25 and 40.
+    // Thermal cap: while Android reports severe throttling (THERMAL >= 3), game frames are spaced at least 22.2 ms
+    // apart. 45 game fps at most: it keeps pacing even without dropping the frame rate by half.
     if (new_game_frame) {
-        constexpr int64_t cap_period_us = 33333;
+        constexpr int64_t cap_period_us = 22222; // 45 game fps: a quarter lost, not half
         constexpr int64_t cap_max_sleep_us = 20000;
         const bool cap_on = session_diag::thermal_status() >= 3;
         int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         if (cap_on != thermal_cap_active) {
             thermal_cap_active = cap_on;
-            LOG_INFO("[THERMAL-CAP] game frame pacing at 30 fps is now {}", cap_on ? "ON" : "OFF");
+            LOG_INFO("[THERMAL-CAP] game frame pacing at 45 fps is now {}", cap_on ? "ON" : "OFF");
         }
         if (cap_on && thermal_cap_last_us != 0 && now_us - thermal_cap_last_us < cap_period_us) {
             const int64_t wait_us = std::min(cap_period_us - (now_us - thermal_cap_last_us), cap_max_sleep_us);
@@ -1685,6 +1686,72 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
             display.viewport_x, display.viewport_y,
             display.viewport_w, display.viewport_h);
     }
+}
+
+void VKState::change_resolution(float new_multiplier) {
+    LOG_INFO("[ADAPT] internal resolution {} -> {} (thermal status {}, level {})", res_multiplier, new_multiplier, session_diag::thermal_status(), adapt_level);
+    device.waitIdle();
+    surface_cache.purge_for_resolution_change();
+    res_multiplier = new_multiplier;
+    std::vector<VKRenderTarget *> targets;
+    {
+        const std::lock_guard<std::mutex> lock(rt_registry->mutex);
+        targets = rt_registry->targets;
+    }
+    for (VKRenderTarget *rt : targets)
+        rt->resize_for_resolution(*this);
+    device.waitIdle();
+    LOG_INFO("[ADAPT] done, {} render targets resized", targets.size());
+}
+
+// Adaptive resolution: while Android reports severe throttling the internal scale goes down one 0.5x step at a time
+// (not below 1x, at most two steps), and comes back up when the phone has been cool for two minutes.
+// Only ever changes at a game frame boundary, and never more often than every 45 s.
+void VKState::apply_adaptive_resolution() {
+    if (!adaptive_resolution.load(std::memory_order_relaxed) || !last_frame_was_game)
+        return;
+    // a scene still being recorded holds framebuffers and views of the old size: wait for the next boundary
+    if (context && static_cast<VKContext *>(context)->is_recording)
+        return;
+
+    constexpr int64_t hot_delay_us = 15'000'000;
+    constexpr int64_t cool_delay_us = 120'000'000;
+    constexpr int64_t min_change_gap_us = 45'000'000;
+    constexpr float step = 0.5f;
+    constexpr int max_level = 2;
+
+    const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (adapt_base == 0.0f)
+        adapt_base = res_multiplier;
+    const int thermal = session_diag::thermal_status();
+
+    int target = adapt_level;
+    if (thermal >= 3) {
+        adapt_cool_since_us = 0;
+        if (adapt_hot_since_us == 0)
+            adapt_hot_since_us = now_us;
+        if (now_us - adapt_hot_since_us >= hot_delay_us && now_us - adapt_last_change_us >= min_change_gap_us && adapt_level < max_level)
+            target = adapt_level + 1;
+    } else if (thermal >= 0 && thermal <= 1) {
+        adapt_hot_since_us = 0;
+        if (adapt_cool_since_us == 0)
+            adapt_cool_since_us = now_us;
+        if (now_us - adapt_cool_since_us >= cool_delay_us && now_us - adapt_last_change_us >= cool_delay_us && adapt_level > 0)
+            target = adapt_level - 1;
+    } else {
+        adapt_hot_since_us = 0;
+        adapt_cool_since_us = 0;
+    }
+    if (target == adapt_level)
+        return;
+
+    const float new_multiplier = std::max(1.0f, adapt_base - step * static_cast<float>(target));
+    adapt_level = target;
+    adapt_last_change_us = now_us;
+    adapt_hot_since_us = 0;
+    adapt_cool_since_us = 0;
+    if (new_multiplier != res_multiplier)
+        change_resolution(new_multiplier);
 }
 
 void VKState::swap_window() {

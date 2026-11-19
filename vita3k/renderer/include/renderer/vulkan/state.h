@@ -81,6 +81,18 @@ struct VKState : public renderer::State {
     // thermal cap (Redux perf stage E): the start of the previous game frame and whether the cap was active
     int64_t thermal_cap_last_us = 0;
     bool thermal_cap_active = false;
+    // adaptive resolution (Redux): the user's scale, the current step down from it and the timers of the controller
+    bool last_frame_was_game = false;
+    float adapt_base = 0.0f;
+    int adapt_level = 0;
+    int64_t adapt_hot_since_us = 0;
+    int64_t adapt_cool_since_us = 0;
+    int64_t adapt_last_change_us = 0;
+    void apply_adaptive_resolution() override;
+    void change_resolution(float new_multiplier);
+
+    // every live render target, to resize them when the resolution changes
+    std::shared_ptr<RenderTargetRegistry> rt_registry = std::make_shared<RenderTargetRegistry>();
     bool vfg_failed = false; // the generator could not be created, do not try again until the option is toggled
     OverlayRenderer overlay_renderer;
 
