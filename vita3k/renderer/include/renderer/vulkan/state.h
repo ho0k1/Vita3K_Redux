@@ -78,6 +78,9 @@ struct VKState : public renderer::State {
     bool vfg_rebase_deadline = false; // set the present deadline again once the generated frame is submitted
     uint32_t vfg_outlier_count = 0;
     uint64_t vfg_last_serial = 0;
+    // thermal cap (Redux perf stage E): the start of the previous game frame and whether the cap was active
+    int64_t thermal_cap_last_us = 0;
+    bool thermal_cap_active = false;
     bool vfg_failed = false; // the generator could not be created, do not try again until the option is toggled
     OverlayRenderer overlay_renderer;
 

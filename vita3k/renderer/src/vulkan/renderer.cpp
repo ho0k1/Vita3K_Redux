@@ -40,6 +40,7 @@
 #include <util/android_driver.h>
 #include <util/log.h>
 #include <util/mem_snapshot.h>
+#include <util/session_diag.h>
 #include <vkutil/vkutil.h>
 
 #include <overlay/display_manager.h>
@@ -1408,6 +1409,25 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
     const bool new_game_frame = display_requested && game_frame_serial != vfg_last_serial;
     if (display_requested)
         vfg_last_serial = game_frame_serial;
+
+    // Thermal cap: while Android reports severe throttling (THERMAL >= 3), game frames are spaced at least 33.3 ms
+    // apart. An even 30 game fps (the frame generator fills in the rest) beats a GPU that swings between 25 and 40.
+    if (new_game_frame) {
+        constexpr int64_t cap_period_us = 33333;
+        constexpr int64_t cap_max_sleep_us = 20000;
+        const bool cap_on = session_diag::thermal_status() >= 3;
+        int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (cap_on != thermal_cap_active) {
+            thermal_cap_active = cap_on;
+            LOG_INFO("[THERMAL-CAP] game frame pacing at 30 fps is now {}", cap_on ? "ON" : "OFF");
+        }
+        if (cap_on && thermal_cap_last_us != 0 && now_us - thermal_cap_last_us < cap_period_us) {
+            const int64_t wait_us = std::min(cap_period_us - (now_us - thermal_cap_last_us), cap_max_sleep_us);
+            std::this_thread::sleep_for(std::chrono::microseconds(wait_us));
+            now_us += wait_us;
+        }
+        thermal_cap_last_us = now_us;
+    }
 
     DisplayFrameInfo frame;
     {
