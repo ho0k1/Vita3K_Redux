@@ -492,6 +492,22 @@ VKSurfaceCache::VKSurfaceCache(VKState &state)
 }
 
 void VKSurfaceCache::purge_for_resolution_change() {
+    // Surfaces the game rendered once and keeps sampling as textures (DOA5 character skins went black) only live on
+    // the GPU. Write them back to guest memory first: afterwards the texture path finds no surface and reads them from there.
+    int written_back = 0;
+    if (state.features.enable_memory_mapping && !state.disable_surface_sync && state.mem && state.context) {
+        std::vector<ColorSurfaceCacheInfo *> to_sync;
+        for (const auto &[base, info] : color_address_lookup) {
+            const bool cpu_newer = info->dirty && *info->dirty;
+            if (info->texture.image && !cpu_newer)
+                to_sync.push_back(info);
+        }
+        for (ColorSurfaceCacheInfo *info : to_sync)
+            submit_immediate_surface_sync(*info, state.mem);
+        written_back = static_cast<int>(to_sync.size());
+    }
+    LOG_INFO("[ADAPT] {} color surfaces written back to guest memory before the purge", written_back);
+
     // queued casts only copy between surfaces that are about to disappear
     pending_casts.clear();
     pending_ds_scene = nullptr;
