@@ -1295,7 +1295,7 @@ void VKState::log_gpu_configuration(const Config &cfg) {
 void VKState::cleanup() {
     {
         // a clean shutdown: the crash marker of a recent resolution change does not apply
-        std::error_code ec;
+        boost::system::error_code ec;
         fs::remove(cache_path / "adapt_marker", ec);
     }
     const auto release_descriptor_sets = [](FrameDescriptor &descriptor) {
@@ -1765,7 +1765,7 @@ void VKState::apply_adaptive_resolution() {
         const fs::path marker = cache_path / "adapt_marker";
         const fs::path disabled_file = cache_path / "adapt_disabled";
         int remaining = 0;
-        std::error_code ec;
+        boost::system::error_code ec;
         if (std::ifstream in(disabled_file.string()); in)
             in >> remaining;
         if (fs::exists(marker, ec)) {
@@ -1787,7 +1787,7 @@ void VKState::apply_adaptive_resolution() {
     if (adapt_marker_active) {
         const int64_t t = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         if (t - adapt_last_change_us >= 30'000'000) {
-            std::error_code ec;
+            boost::system::error_code ec;
             fs::remove(cache_path / "adapt_marker", ec);
             adapt_marker_active = false;
         }
@@ -1912,7 +1912,7 @@ void VKState::apply_adaptive_resolution() {
             adapt_level = previous_level;
             adapt_applied = res_multiplier;
             adapt_session_disabled = true;
-            std::error_code ec;
+            boost::system::error_code ec;
             fs::remove(cache_path / "adapt_marker", ec);
             adapt_marker_active = false;
         }
