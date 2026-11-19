@@ -1952,6 +1952,11 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         return nullptr;
     } else {
         // can't wait, compile it right now
+        perf::sync_reason() = !use_async_compilation ? "sync:async-off"
+            : !consider_for_async                    ? (vertex_store_pass ? "sync:vertex-store" : "sync:not-deferrable")
+            : must_not_skip_draw(record, consider_for_async) ? "sync:must-draw"
+            : already_in_cache                       ? "sync:cached"
+                                                     : "sync:other";
         vk::Pipeline result = compile_pipeline(type, render_pass, *vertex_program_binding, *fragment_program_binding, record, static_cast<bool>(record.color_surface.data), context.shader_hints, has_casts, mem);
 
         const auto time_s = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -1960,6 +1965,7 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         if (!already_in_cache)
             state.shaders_count_compiled++;
 
+        perf::sync_reason() = "async";
         it->second = result ? result : pipeline_failed;
 
         return result;

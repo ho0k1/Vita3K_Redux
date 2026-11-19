@@ -50,6 +50,12 @@ inline std::atomic<uint64_t> &render_thread_compile_us() {
 enum class Kind { Shader,
     Pipeline };
 
+// why the render thread has to compile right now (set just before a synchronous compile, shown in the slow-compile log)
+inline const char *&sync_reason() {
+    static thread_local const char *reason = "async";
+    return reason;
+}
+
 // Measures one compile; anything >= 5 ms is logged with the thread it ran on.
 class CompileScope {
 public:
@@ -75,7 +81,7 @@ public:
                 ++t.slow_shaders;
             else
                 ++t.slow_pipelines;
-            LOG_INFO("[PERF] slow {} ({}) {:.1f} ms on {} thread", kind == Kind::Shader ? "shader" : "pipeline", what, us / 1000.0, render ? "RENDER" : "worker");
+            LOG_INFO("[PERF] slow {} ({}, {}) {:.1f} ms on {} thread", kind == Kind::Shader ? "shader" : "pipeline", what, sync_reason(), us / 1000.0, render ? "RENDER" : "worker");
         }
     }
 
