@@ -97,9 +97,15 @@ struct VKState : public renderer::State {
     int adapt_fast_windows = 0;
     int adapt_probe_failures = 0;
     int64_t adapt_last_raise_us = 0;
+    int adapt_early_windows = 0;
+    double adapt_last_period_us = 0.0;
+    float vfg_gpu_ms = 0.0f;           // last VFG GPU time average, an early sign that the GPU is near its limit
+    bool adapt_session_disabled = false; // a failed change or a crash right after one switched the feature off
+    bool adapt_guard_checked = false;
+    bool adapt_marker_active = false;
     float adapt_applied = 0.0f; // the scale this controller set last, to notice when the user changes it
     void apply_adaptive_resolution() override;
-    void change_resolution(float new_multiplier);
+    bool change_resolution(float new_multiplier);
 
     // every live render target, to resize them when the resolution changes
     std::shared_ptr<RenderTargetRegistry> rt_registry = std::make_shared<RenderTargetRegistry>();

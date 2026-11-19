@@ -46,6 +46,8 @@
 #include <overlay/display_manager.h>
 
 #include <algorithm>
+#include <fstream>
+#include <system_error>
 #include <mutex>
 #include <unordered_set>
 
@@ -1291,6 +1293,11 @@ void VKState::log_gpu_configuration(const Config &cfg) {
 }
 
 void VKState::cleanup() {
+    {
+        // a clean shutdown: the crash marker of a recent resolution change does not apply
+        std::error_code ec;
+        fs::remove(cache_path / "adapt_marker", ec);
+    }
     const auto release_descriptor_sets = [](FrameDescriptor &descriptor) {
         std::vector<vk::DescriptorSet>().swap(descriptor.sets);
         descriptor.descriptors_idx = 0;
@@ -1651,6 +1658,7 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
                         frame_gen->timing_end(cmd, slot);
                         if (++vfg_generated_count % 300 == 0) {
                             const float gpu_ms = frame_gen->take_average_gpu_ms();
+                            vfg_gpu_ms = gpu_ms;
                             LOG_INFO("VFG: {} generated frames, game period {:.1f} ms, VFG GPU time {:.2f} ms", vfg_generated_count, vfg_period_us / 1000.0, gpu_ms);
                         }
                     }
@@ -1690,21 +1698,45 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
     }
 }
 
-void VKState::change_resolution(float new_multiplier) {
+bool VKState::change_resolution(float new_multiplier) {
+    const float old_multiplier = res_multiplier;
     LOG_INFO("[ADAPT] internal resolution {} -> {} (thermal status {}, level {})", res_multiplier, new_multiplier, session_diag::thermal_status(), adapt_level);
-    device.waitIdle();
-    surface_cache.purge_for_resolution_change();
-    res_multiplier = new_multiplier;
-    session_diag::set_adaptive_resolution(adapt_base > 0.0f ? adapt_base : new_multiplier, new_multiplier);
-    std::vector<VKRenderTarget *> targets;
-    {
-        const std::lock_guard<std::mutex> lock(rt_registry->mutex);
-        targets = rt_registry->targets;
+
+    const auto apply = [this](float scale) -> bool {
+        try {
+            device.waitIdle();
+            surface_cache.purge_for_resolution_change();
+            res_multiplier = scale;
+            std::vector<VKRenderTarget *> targets;
+            {
+                const std::lock_guard<std::mutex> lock(rt_registry->mutex);
+                targets = rt_registry->targets;
+            }
+            bool all_ok = true;
+            for (VKRenderTarget *rt : targets) {
+                rt->resize_for_resolution(*this);
+                if (!rt->color.image || !rt->depthstencil.image)
+                    all_ok = false;
+            }
+            device.waitIdle();
+            LOG_INFO("[ADAPT] done, {} render targets resized{}", targets.size(), all_ok ? "" : " (SOME FAILED)");
+            return all_ok;
+        } catch (const std::exception &e) {
+            LOG_ERROR("[ADAPT] resolution change failed: {}", e.what());
+            return false;
+        }
+    };
+
+    if (apply(new_multiplier)) {
+        session_diag::set_adaptive_resolution(adapt_base > 0.0f ? adapt_base : new_multiplier, new_multiplier);
+        return true;
     }
-    for (VKRenderTarget *rt : targets)
-        rt->resize_for_resolution(*this);
-    device.waitIdle();
-    LOG_INFO("[ADAPT] done, {} render targets resized", targets.size());
+
+    LOG_ERROR("[ADAPT] rolling back to {} and switching the adaptive resolution off for this session", old_multiplier);
+    if (!apply(old_multiplier))
+        LOG_ERROR("[ADAPT] the rollback failed too");
+    session_diag::set_adaptive_resolution(0.0f, 0.0f);
+    return false;
 }
 
 // Adaptive resolution: while Android reports severe throttling the internal scale goes down one 0.5x step at a time
@@ -1726,6 +1758,41 @@ void VKState::apply_adaptive_resolution() {
         }
         return;
     }
+    if (!adapt_guard_checked) {
+        adapt_guard_checked = true;
+        // a session that ended within 30 s of a resolution change (marker file still there) switches the feature
+        // off for the next launches: a crash must not repeat on every start
+        const fs::path marker = cache_path / "adapt_marker";
+        const fs::path disabled_file = cache_path / "adapt_disabled";
+        int remaining = 0;
+        std::error_code ec;
+        if (std::ifstream in(disabled_file.string()); in)
+            in >> remaining;
+        if (fs::exists(marker, ec)) {
+            remaining = 5;
+            fs::remove(marker, ec);
+            LOG_WARN("[ADAPT] the previous session ended within 30 s of a resolution change");
+        }
+        if (remaining > 0) {
+            adapt_session_disabled = true;
+            --remaining;
+            std::ofstream(disabled_file.string()) << remaining;
+            LOG_WARN("[ADAPT] adaptive resolution is off for this launch ({} more launches after it)", remaining);
+        } else {
+            fs::remove(disabled_file, ec);
+        }
+    }
+    if (adapt_session_disabled)
+        return;
+    if (adapt_marker_active) {
+        const int64_t t = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (t - adapt_last_change_us >= 30'000'000) {
+            std::error_code ec;
+            fs::remove(cache_path / "adapt_marker", ec);
+            adapt_marker_active = false;
+        }
+    }
+
     // frame pace: game frames per ~5 s window, judged against the best pace this game has shown
     const int64_t pace_now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     bool window_closed = false;
@@ -1749,6 +1816,10 @@ void VKState::apply_adaptive_resolution() {
             const double target_period_us = frame_generation.load(std::memory_order_relaxed) ? 33'333.0 : 16'667.0;
             const bool slow = period_us > target_period_us * 1.12 && period_us > adapt_best_period_us * 1.15;
             const bool fast = period_us <= target_period_us * 1.05 || period_us <= adapt_best_period_us * 1.10;
+            adapt_last_period_us = period_us;
+            // early warning: the phone is already warm (thermal >= 2) and the frame generator needs >11 ms of GPU
+            const bool early = session_diag::thermal_status() >= 2 && vfg_gpu_ms > 11.0f;
+            adapt_early_windows = early ? adapt_early_windows + 1 : 0;
             adapt_slow_windows = slow ? adapt_slow_windows + 1 : 0;
             adapt_fast_windows = fast ? adapt_fast_windows + 1 : 0;
         }
@@ -1795,12 +1866,13 @@ void VKState::apply_adaptive_resolution() {
     if (target == adapt_level && window_closed) {
         constexpr int64_t pace_gap_us = 15'000'000;
         const int64_t probe_hold_us = 60'000'000LL << adapt_probe_failures;
-        if (adapt_slow_windows >= 2 && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
+        if ((adapt_slow_windows >= 2 || adapt_early_windows >= 3) && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
             target = adapt_level + 1;
             if (adapt_last_raise_us != 0 && now_us - adapt_last_raise_us < 30'000'000)
                 adapt_probe_failures = std::min(adapt_probe_failures + 1, 3);
             LOG_INFO("[ADAPT] frame pace is slower than the best {:.1f} ms: lowering (probe failures {})", adapt_best_period_us / 1000.0, adapt_probe_failures);
             adapt_slow_windows = 0;
+            adapt_early_windows = 0;
         } else if (adapt_level > 0 && thermal <= 2 && adapt_fast_windows >= 3 && now_us - adapt_last_change_us >= probe_hold_us) {
             target = adapt_level - 1;
             adapt_last_raise_us = now_us;
@@ -1810,15 +1882,18 @@ void VKState::apply_adaptive_resolution() {
     }
     if (target == adapt_level) {
         // visible in the logs: why the scale has not come back yet
-        if (adapt_level > 0 && now_us - adapt_last_log_us >= 60'000'000) {
+        if (now_us - adapt_last_log_us >= 60'000'000) {
             adapt_last_log_us = now_us;
             const int64_t cool_s = adapt_cool_since_us ? (now_us - adapt_cool_since_us) / 1'000'000 : 0;
-            LOG_INFO("[ADAPT] holding level {} (scale {}), thermal status {}, cool for {} s of {}", adapt_level, res_multiplier, thermal, cool_s, cool_delay_us / 1'000'000);
+            LOG_INFO("[ADAPT] status: level {} scale {} (base {}), thermal {}, cool {} s of {}, frame period {:.1f} ms (best {:.1f}), VFG GPU {:.1f} ms, slow/fast/early windows {}/{}/{}, probe failures {}",
+                adapt_level, res_multiplier, adapt_base, thermal, cool_s, cool_delay_us / 1'000'000, adapt_last_period_us / 1000.0,
+                adapt_best_period_us / 1000.0, vfg_gpu_ms, adapt_slow_windows, adapt_fast_windows, adapt_early_windows, adapt_probe_failures);
         }
         return;
     }
 
     const float new_multiplier = std::max(1.0f, adapt_base - step * static_cast<float>(target));
+    const int previous_level = adapt_level;
     adapt_level = target;
     adapt_last_change_us = now_us;
     adapt_hot_since_us = 0;
@@ -1826,10 +1901,21 @@ void VKState::apply_adaptive_resolution() {
     adapt_slow_windows = 0;
     adapt_fast_windows = 0;
     if (new_multiplier != res_multiplier) {
-        change_resolution(new_multiplier);
-        adapt_applied = res_multiplier;
-        if (adapt_level == 0)
-            session_diag::set_adaptive_resolution(0.0f, 0.0f);
+        // the marker file lives for 30 s: a crash in that time disables the feature for the next launches
+        std::ofstream((cache_path / "adapt_marker").string()) << "1";
+        adapt_marker_active = true;
+        if (change_resolution(new_multiplier)) {
+            adapt_applied = res_multiplier;
+            if (adapt_level == 0)
+                session_diag::set_adaptive_resolution(0.0f, 0.0f);
+        } else {
+            adapt_level = previous_level;
+            adapt_applied = res_multiplier;
+            adapt_session_disabled = true;
+            std::error_code ec;
+            fs::remove(cache_path / "adapt_marker", ec);
+            adapt_marker_active = false;
+        }
     }
 }
 
