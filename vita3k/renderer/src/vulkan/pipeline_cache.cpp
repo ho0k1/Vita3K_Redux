@@ -65,6 +65,7 @@ static constexpr bool warm_at_program_creation = true;
 static constexpr bool sync_new_surface_draws = false; // the surface was not drawn to in the last 60 frames (off: the main scene counts as new after a loading screen so a level's first frame froze for seconds on a cold cache)
 static constexpr bool sync_depth_stencil_writers = false; // the draw writes depth or stencil (off: nearly every new pipeline of a 3D game does so async would almost never defer)
 static constexpr bool save_in_background = true;
+static constexpr bool defer_cached_pipelines = true;
 
 namespace {
 uint64_t now_s() {
@@ -1914,7 +1915,9 @@ vk::Pipeline PipelineCache::retrieve_pipeline(VKContext &context, SceGxmPrimitiv
         }
     }
 
-    const bool compile_pipeline_async = !already_in_cache && use_async_compilation && !must_not_skip_draw(record, consider_for_async);
+    // Redux perf stage 1b: a pipeline known from the on-disk cache (null entry) is deferred as well, its driver-side
+    // creation still costs 80+ ms on Adreno; the cache-only probe below keeps real cache hits instant
+    const bool compile_pipeline_async = (defer_cached_pipelines || !already_in_cache) && use_async_compilation && !must_not_skip_draw(record, consider_for_async);
 
     if (compile_pipeline_async && probe_before_defer && support_cache_only_creation) {
         // the driver can already hold this pipeline, for example the same shaders with other render state, and then
