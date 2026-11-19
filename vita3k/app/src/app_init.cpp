@@ -83,6 +83,16 @@
 #include <algorithm>
 #include <fstream>
 
+
+// Redux perf stage 1c: the DOA5 logs showed every render-thread stall was "sync:async-off": the saved config had
+// asynchronous pipeline compilation switched off (it was off by default), so 60+ pipelines per scene compiled
+// on the render thread. It is always on now.
+#ifdef __ANDROID__
+static constexpr bool redux_force_async_pipelines = true;
+#else
+static constexpr bool redux_force_async_pipelines = false;
+#endif
+
 namespace app {
 
 static float sdl_axis_to_float(int16_t axis, float mult) {
@@ -679,7 +689,7 @@ void apply_renderer_config(EmuEnvState &emuenv) {
     r.set_anisotropic_filtering(cc.anisotropic_filtering);
     r.set_stretch_display(cc.stretch_the_display_area);
     r.stretch_hd_pixel_perfect(cc.fullscreen_hd_res_pixel_perfect);
-    r.set_async_compilation(cc.async_pipeline_compilation);
+    r.set_async_compilation(cc.async_pipeline_compilation || redux_force_async_pipelines);
     r.frame_generation = cc.frame_generation;
     r.get_texture_cache()->set_replacement_state(cc.import_textures, cc.export_textures, cc.export_as_png);
 #ifdef __ANDROID__
@@ -770,7 +780,7 @@ void apply_runtime_settings(EmuEnvState &emuenv) {
     r.set_anisotropic_filtering(cc.anisotropic_filtering);
     r.set_stretch_display(cc.stretch_the_display_area);
     r.stretch_hd_pixel_perfect(cc.fullscreen_hd_res_pixel_perfect);
-    r.set_async_compilation(cc.async_pipeline_compilation);
+    r.set_async_compilation(cc.async_pipeline_compilation || redux_force_async_pipelines);
     r.frame_generation = cc.frame_generation;
     r.get_texture_cache()->set_replacement_state(cc.import_textures, cc.export_textures, cc.export_as_png);
 #ifdef __ANDROID__

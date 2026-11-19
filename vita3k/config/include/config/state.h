@@ -79,7 +79,7 @@ struct Config {
         std::string memory_mapping = VITA3K_DEFAULT_MEMORY_MAPPING;
         bool v_sync = true;
         int anisotropic_filtering = 1;
-        bool async_pipeline_compilation = false;
+        bool async_pipeline_compilation = true;
         bool frame_generation = true;
         bool accurate_thread_scheduling = true;
         int preempt_on_wake_us = 1000;

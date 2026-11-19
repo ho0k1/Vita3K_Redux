@@ -22,7 +22,7 @@ class EmulatorConfig {
     @JvmField var memoryMapping: String = "page-table"
     @JvmField var vSync: Boolean = true
     @JvmField var anisotropicFiltering: Int = 1
-    @JvmField var asyncPipelineCompilation: Boolean = false
+    @JvmField var asyncPipelineCompilation: Boolean = true
     @JvmField var frameGeneration: Boolean = true
     @JvmField var accurateThreadScheduling: Boolean = true
     @JvmField var guestCores: Int = 3
