@@ -97,7 +97,7 @@ class EmulatorConfig {
     @JvmField var archiveLog: Boolean = false
     @JvmField var logCompatWarn: Boolean = false
     @JvmField var logLevel: Int = 0
-    @JvmField var performanceOverlay: Boolean = false
+    @JvmField var performanceOverlay: Boolean = true
     @JvmField var performanceOverlayDetail: Int = 0
     @JvmField var performanceOverlayPosition: Int = 0
     @JvmField var screenshotFormat: Int = 1

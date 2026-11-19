@@ -201,7 +201,7 @@ using PhysicalKeyCode = input::PhysicalKeyCode;
     code(bool, "discord-rich-presence", true, discord_rich_presence)                                    \
     code(bool, "wait-for-debugger", false, wait_for_debugger)                                           \
     code(bool, "color-surface-debug", false, color_surface_debug)                                       \
-    code(bool, "performance-overlay", false, performance_overlay)                                       \
+    code(bool, "performance-overlay", true, performance_overlay)                                        \
     code(int, "performance-overlay-detail", static_cast<int>(MINIMUM), performance_overlay_detail)      \
     code(int, "performance-overlay-position", static_cast<int>(TOP_LEFT), performance_overlay_position) \
     code(int, "screenshot-format", static_cast<int>(JPEG), screenshot_format)                           \
