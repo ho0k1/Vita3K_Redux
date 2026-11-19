@@ -88,6 +88,7 @@ struct VKState : public renderer::State {
     int64_t adapt_hot_since_us = 0;
     int64_t adapt_cool_since_us = 0;
     int64_t adapt_last_change_us = 0;
+    int64_t adapt_last_log_us = 0;
     float adapt_applied = 0.0f; // the scale this controller set last, to notice when the user changes it
     void apply_adaptive_resolution() override;
     void change_resolution(float new_multiplier);

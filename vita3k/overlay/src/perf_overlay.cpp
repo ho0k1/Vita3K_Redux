@@ -17,6 +17,7 @@
 
 #include <overlay/perf_overlay.h>
 #include <overlay/types.h>
+#include <util/session_diag.h>
 
 #include <fmt/format.h>
 
@@ -102,6 +103,12 @@ void perf_overlay::update_text() {
             m_avg_fps, m_min_fps, m_max_fps);
         break;
     }
+
+    // the adaptive resolution lowered the internal scale because the phone is overheating
+    const float adapt_base = session_diag::adaptive_resolution_base();
+    const float adapt_now = session_diag::adaptive_resolution_current();
+    if (adapt_base > 0.0f && adapt_now > 0.0f && adapt_now < adapt_base)
+        text += fmt::format("\nRes: {:g}x -> {:g}x (heat)", adapt_base, adapt_now);
 
     m_body.set_text(text);
     m_body.auto_resize();

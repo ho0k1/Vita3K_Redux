@@ -1695,6 +1695,7 @@ void VKState::change_resolution(float new_multiplier) {
     device.waitIdle();
     surface_cache.purge_for_resolution_change();
     res_multiplier = new_multiplier;
+    session_diag::set_adaptive_resolution(adapt_base > 0.0f ? adapt_base : new_multiplier, new_multiplier);
     std::vector<VKRenderTarget *> targets;
     {
         const std::lock_guard<std::mutex> lock(rt_registry->mutex);
@@ -1721,6 +1722,7 @@ void VKState::apply_adaptive_resolution() {
             adapt_applied = 0.0f;
             if (restore != res_multiplier)
                 change_resolution(restore);
+            session_diag::set_adaptive_resolution(0.0f, 0.0f);
         }
         return;
     }
@@ -1760,8 +1762,15 @@ void VKState::apply_adaptive_resolution() {
         adapt_hot_since_us = 0;
         adapt_cool_since_us = 0;
     }
-    if (target == adapt_level)
+    if (target == adapt_level) {
+        // visible in the logs: why the scale has not come back yet
+        if (adapt_level > 0 && now_us - adapt_last_log_us >= 60'000'000) {
+            adapt_last_log_us = now_us;
+            const int64_t cool_s = adapt_cool_since_us ? (now_us - adapt_cool_since_us) / 1'000'000 : 0;
+            LOG_INFO("[ADAPT] holding level {} (scale {}), thermal status {}, cool for {} s of {}", adapt_level, res_multiplier, thermal, cool_s, cool_delay_us / 1'000'000);
+        }
         return;
+    }
 
     const float new_multiplier = std::max(1.0f, adapt_base - step * static_cast<float>(target));
     adapt_level = target;
@@ -1771,6 +1780,8 @@ void VKState::apply_adaptive_resolution() {
     if (new_multiplier != res_multiplier) {
         change_resolution(new_multiplier);
         adapt_applied = res_multiplier;
+        if (adapt_level == 0)
+            session_diag::set_adaptive_resolution(0.0f, 0.0f);
     }
 }
 

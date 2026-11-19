@@ -19,6 +19,11 @@ bool returns_pointer(const char *name);
 void set_thermal_status(int status);
 int thermal_status();
 
+// adaptive resolution: the scale the user chose and the one in use now (0 = not active), shown by the FPS overlay
+void set_adaptive_resolution(float base, float current);
+float adaptive_resolution_base();
+float adaptive_resolution_current();
+
 // A UNIMPLEMENTED()/STUBBED() call site; lives for the whole process (function-local static).
 struct StubSite {
     const char *name;

@@ -70,6 +70,19 @@ bool note_call(uint32_t nid, uint32_t ret) {
     return slot->errors.fetch_add(1, std::memory_order_relaxed) == 0;
 }
 
+static std::atomic<float> g_adapt_base{ 0.0f };
+static std::atomic<float> g_adapt_current{ 0.0f };
+void set_adaptive_resolution(float base, float current) {
+    g_adapt_base.store(base, std::memory_order_relaxed);
+    g_adapt_current.store(current, std::memory_order_relaxed);
+}
+float adaptive_resolution_base() {
+    return g_adapt_base.load(std::memory_order_relaxed);
+}
+float adaptive_resolution_current() {
+    return g_adapt_current.load(std::memory_order_relaxed);
+}
+
 static std::atomic<int> g_thermal_status{ -1 };
 void set_thermal_status(int status) {
     g_thermal_status.store(status, std::memory_order_relaxed);
