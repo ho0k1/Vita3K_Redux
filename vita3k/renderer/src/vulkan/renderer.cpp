@@ -1705,7 +1705,7 @@ bool VKState::change_resolution(float new_multiplier) {
     const auto apply = [this](float scale) -> bool {
         try {
             device.waitIdle();
-            surface_cache.purge_for_resolution_change();
+            surface_cache.purge_for_resolution_change(scale);
             res_multiplier = scale;
             std::vector<VKRenderTarget *> targets;
             {

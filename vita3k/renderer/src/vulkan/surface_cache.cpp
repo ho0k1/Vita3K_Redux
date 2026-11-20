@@ -491,44 +491,181 @@ VKSurfaceCache::VKSurfaceCache(VKState &state)
     ds_surface_queue.init(max_surfaces_allowed);
 }
 
-void VKSurfaceCache::purge_for_resolution_change() {
-    // Surfaces the game rendered once and keeps sampling as textures (DOA5 character skins went black) only live on
-    // the GPU. Write them back to guest memory first: afterwards the texture path finds no surface and reads them from there.
-    int written_back = 0;
-    if (state.features.enable_memory_mapping && !state.disable_surface_sync && state.mem && state.context) {
-        std::vector<ColorSurfaceCacheInfo *> to_sync;
-        for (const auto &[base, info] : color_address_lookup) {
-            const bool cpu_newer = info->dirty && *info->dirty;
-            if (info->texture.image && !cpu_newer)
-                to_sync.push_back(info);
-        }
-        for (ColorSurfaceCacheInfo *info : to_sync)
-            submit_immediate_surface_sync(*info, state.mem);
-        written_back = static_cast<int>(to_sync.size());
-    }
-    LOG_INFO("[ADAPT] {} color surfaces written back to guest memory before the purge", written_back);
-
-    // queued casts only copy between surfaces that are about to disappear
+void VKSurfaceCache::purge_for_resolution_change(const float new_multiplier) {
+    // Surfaces the game renders once (or only in part) and keeps sampling or loading later exist only on the GPU. Dropping
+    // them hands the game black images (DOA5 characters turned into black silhouettes), so every colour surface is
+    // blitted to its new size instead and keeps its content and its place in the caches.
+    // queued casts only copy between images that are about to be replaced
     pending_casts.clear();
     pending_ds_scene = nullptr;
     pending_ds_scene_stores = false;
     last_written_surface = nullptr;
     cpu_surfaces_changed.clear();
 
-    for (auto &[cube_address, cube] : cube_textures)
-        cube.texture.destroy();
-    cube_textures.clear();
+    if (state.context) {
+        auto &replay = static_cast<VKContext *>(state.context)->macrotile_replay;
+        replay.pre_scene_valid = false;
+        replay.pre_scene_raw_valid = false;
+    }
+
+    vkutil::DestroyQueue &destroy_queue = state.frame().destroy_queue;
+    int rescaled = 0;
+    int dropped = 0;
+    const uint32_t max_dimension = state.physical_device.getProperties().limits.maxImageDimension2D;
+
+    const auto blit_filter = [&](vk::Format format, bool force_nearest) {
+        const vk::FormatFeatureFlags features = state.physical_device.getFormatProperties(format).optimalTilingFeatures;
+        const bool linear_ok = (features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) && (features & vk::FormatFeatureFlagBits::eBlitSrc);
+        return (force_nearest || !linear_ok) ? vk::Filter::eNearest : vk::Filter::eLinear;
+    };
+
+    // a surface that cannot be rescaled is forgotten like before: the game gets a fresh (black) one
+    const auto drop_surface = [&](ColorSurfaceCacheInfo &info) {
+        if (info.data)
+            color_address_lookup.erase(info.data.address());
+        destroy_surface(info);
+        info.data = Ptr<void>();
+        info.has_phase_view = false;
+        ++dropped;
+    };
 
     for (auto &item : color_surface_queue.items) {
         ColorSurfaceCacheInfo &info = item.content;
-        if (info.data)
-            color_address_lookup.erase(info.data.address());
-        if (info.texture.image)
-            destroy_surface(info);
-        info.data = Ptr<void>();
-        info.has_phase_view = false;
+        if (!info.texture.image)
+            continue;
+
+        const uint32_t new_w = std::max(1u, static_cast<uint32_t>(info.original_width * new_multiplier));
+        const uint32_t new_h = std::max(1u, static_cast<uint32_t>(info.original_height * new_multiplier));
+        if (info.texture.width == new_w && info.texture.height == new_h)
+            continue;
+        if (new_w > max_dimension || new_h > max_dimension || new_w > UINT16_MAX || new_h > UINT16_MAX) {
+            drop_surface(info);
+            continue;
+        }
+        const vk::Format vk_format = info.texture.format;
+        const bool force_nearest = info.format == SCE_GXM_COLOR_BASE_FORMAT_F32 || info.format == SCE_GXM_COLOR_BASE_FORMAT_F32F32;
+
+        // same image flags as a freshly created surface
+        const bool need_mutable_rgba8 = (vk_format == vk::Format::eR8G8B8A8Unorm || vk_format == vk::Format::eR8G8B8A8Srgb);
+        const bool need_mutable = need_mutable_rgba8 || vk::blockSize(vk_format) == 8;
+        const vk::ImageCreateFlags image_create_flags = need_mutable ? vk::ImageCreateFlagBits::eMutableFormat : vk::ImageCreateFlags();
+        const void *image_info_pNext = nullptr;
+        if (support_image_format_specifier && need_mutable_rgba8) {
+            static const vk::Format view_formats[] = { vk::Format::eR8G8B8A8Unorm, vk::Format::eR8G8B8A8Srgb };
+            static const vk::ImageFormatListCreateInfoKHR image_info_formats{
+                .viewFormatCount = 2,
+                .pViewFormats = view_formats
+            };
+            image_info_pNext = &image_info_formats;
+        }
+        vk::ImageUsageFlags surface_usages = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eInputAttachment;
+        if (state.features.support_shader_interlock)
+            surface_usages |= vk::ImageUsageFlagBits::eStorage;
+
+        // allocate first: an out-of-memory error then leaves the surface untouched and no command buffer open
+        vkutil::Image fresh(new_w, new_h, vk_format);
+        std::unique_ptr<vkutil::Image> fresh_raw;
+        try {
+            fresh.layout = vkutil::ImageLayout::Undefined;
+            fresh.init_image(surface_usages, vkutil::default_comp_mapping, image_create_flags, image_info_pNext);
+            if (info.raw_image && info.raw_image->image) {
+                fresh_raw = std::make_unique<vkutil::Image>(new_w, new_h, vk::Format::eR16G16B16A16Uint);
+                fresh_raw->layout = vkutil::ImageLayout::Undefined;
+                fresh_raw->init_image(vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eColorAttachment
+                        | vk::ImageUsageFlagBits::eInputAttachment | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc,
+                    vkutil::default_comp_mapping, vk::ImageCreateFlagBits::eMutableFormat);
+            }
+        } catch (const std::exception &e) {
+            LOG_ERROR("[ADAPT] cannot allocate a {}x{} surface: {}", new_w, new_h, e.what());
+            fresh.destroy();
+            if (fresh_raw)
+                fresh_raw->destroy();
+            drop_surface(info);
+            continue;
+        }
+        if (!fresh.image || (info.raw_image && info.raw_image->image && !(fresh_raw && fresh_raw->image))) {
+            fresh.destroy();
+            if (fresh_raw)
+                fresh_raw->destroy();
+            drop_surface(info);
+            continue;
+        }
+
+        vk::CommandBuffer cmd_buffer = vkutil::create_single_time_command(state.device, state.general_command_pool);
+        info.texture.transition_to(cmd_buffer, vkutil::ImageLayout::TransferSrc);
+        fresh.transition_to_discard(cmd_buffer, vkutil::ImageLayout::TransferDst);
+        const auto make_blit = [&](const vkutil::Image &src) {
+            return vk::ImageBlit{
+                .srcSubresource = vkutil::color_subresource_layer,
+                .srcOffsets = std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(src.width), static_cast<int32_t>(src.height), 1 } },
+                .dstSubresource = vkutil::color_subresource_layer,
+                .dstOffsets = std::array<vk::Offset3D, 2>{ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ static_cast<int32_t>(new_w), static_cast<int32_t>(new_h), 1 } },
+            };
+        };
+        cmd_buffer.blitImage(info.texture.image, vk::ImageLayout::eTransferSrcOptimal, fresh.image, vk::ImageLayout::eTransferDstOptimal, make_blit(info.texture), blit_filter(vk_format, force_nearest));
+        fresh.transition_to(cmd_buffer, vkutil::ImageLayout::ColorAttachmentReadWrite);
+
+        if (fresh_raw) {
+            vkutil::Image &old_raw = *info.raw_image;
+            old_raw.transition_to(cmd_buffer, vkutil::ImageLayout::TransferSrc);
+            fresh_raw->transition_to_discard(cmd_buffer, vkutil::ImageLayout::TransferDst);
+            cmd_buffer.blitImage(old_raw.image, vk::ImageLayout::eTransferSrcOptimal, fresh_raw->image, vk::ImageLayout::eTransferDstOptimal, make_blit(old_raw), vk::Filter::eNearest);
+            fresh_raw->transition_to(cmd_buffer, vkutil::ImageLayout::StorageImage);
+        }
+        // one submit per surface keeps the old and the new image from both being resident for every surface at once
+        vkutil::end_single_time_command(state.device, state.general_queue, state.general_command_pool, cmd_buffer);
+
+        // the GPU is idle now: the old image and everything derived from it can go
+        for (auto &casted : info.casted_textures) {
+            destroy_queue.add_buffer(casted.transition_buffer);
+            destroy_queue.add(casted.reinterpret_view);
+            destroy_queue.add(casted.alt_gamma_view);
+            destroy_queue.add_image(casted.texture);
+        }
+        info.casted_textures.clear();
+        destroy_queue.add(info.alternate_view);
+        destroy_queue.add(info.reinterpret_store_view);
+        destroy_queue.add(info.linear_storage_view);
+        info.alternate_view = nullptr;
+        info.reinterpret_store_view = nullptr;
+        info.linear_storage_view = nullptr;
+        if (info.blit_image) {
+            destroy_queue.add_image(*info.blit_image);
+            info.blit_image.reset();
+        }
+        if (info.copy_buffer) {
+            destroy_queue.add_buffer(*info.copy_buffer);
+            info.copy_buffer.reset();
+        }
+        if (info.sws_context) {
+            sws_freeContext(info.sws_context);
+            info.sws_context = nullptr;
+        }
+        if (info.upload_buffer) {
+            destroy_queue.add_buffer(*info.upload_buffer);
+            info.upload_buffer.reset();
+        }
+        {
+            const std::lock_guard<std::mutex> lock(post_sync_mutex);
+            info.generation++;
+        }
+
+        destroy_framebuffers(info.texture.view);
+        info.texture.destroy();
+        info.texture = std::move(fresh);
+        if (fresh_raw) {
+            info.raw_image->destroy();
+            info.raw_image = std::move(fresh_raw);
+        }
+        info.width = static_cast<uint16_t>(new_w);
+        info.height = static_cast<uint16_t>(new_h);
+        ++rescaled;
     }
-    color_address_lookup.clear();
+    LOG_INFO("[ADAPT] {} color surfaces rescaled in place, {} dropped", rescaled, dropped);
+
+    for (auto &[cube_address, cube] : cube_textures)
+        cube.texture.destroy();
+    cube_textures.clear();
 
     for (auto &item : ds_surface_queue.items) {
         DepthStencilSurfaceCacheInfo &info = item.content;
@@ -543,7 +680,6 @@ void VKSurfaceCache::purge_for_resolution_change() {
     }
     depth_address_lookup.clear();
     stencil_address_lookup.clear();
-    shader_written_memory.clear();
 }
 
 void VKSurfaceCache::cleanup() {

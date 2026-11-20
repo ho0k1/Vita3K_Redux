@@ -404,8 +404,8 @@ public:
 
     explicit VKSurfaceCache(VKState &state);
     void cleanup();
-    // drop every cached surface (the resolution changed, they have the wrong size); the GPU must be idle
-    void purge_for_resolution_change();
+    // the resolution changed: colour surfaces are blitted to the new size, depth/stencil ones are dropped; the GPU must be idle
+    void purge_for_resolution_change(float new_multiplier);
 
     SurfaceRetrieveResult retrieve_color_surface_for_framebuffer(MemState &mem, SceGxmColorSurface *color);
     std::optional<TextureLookupResult> retrieve_color_surface_as_texture(const SceGxmTexture &texture, const SceGxmColorBaseFormat base_format, TextureViewport *texture_viewport);
