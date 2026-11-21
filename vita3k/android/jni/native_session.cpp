@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "android_state.h"
+#include <cmath>
 #include "jni_string.h"
 
 #include <app/functions.h>
@@ -218,6 +219,18 @@ Java_org_vita3k_emulator_NativeLib_reportThermalStatus(JNIEnv *, jclass, jint st
         LOG_WARN("[THERMAL] status {} -> {}: the system is throttling the CPU/GPU, expect slowdowns", previous, static_cast<int>(status));
     else
         LOG_INFO("[THERMAL] status {} -> {}", previous, static_cast<int>(status));
+}
+
+// PowerManager.getThermalHeadroom() forecast (NaN when the device cannot tell)
+JNIEXPORT void JNICALL
+Java_org_vita3k_emulator_NativeLib_reportThermalHeadroom(JNIEnv *, jclass, jfloat headroom) {
+    const float previous = session_diag::thermal_headroom();
+    const float value = std::isnan(headroom) ? -1.0f : headroom;
+    session_diag::set_thermal_headroom(value);
+    // only the moments the forecast crosses a threshold are worth a log line
+    const auto band = [](float h) { return h >= 1.0f ? 2 : (h >= 0.9f ? 1 : 0); };
+    if (band(previous) != band(value))
+        LOG_INFO("[THERMAL] forecast headroom {:.2f} -> {:.2f} (1.0 = severe throttling within ~10 s)", previous, value);
 }
 
 // total bytes received by the guest from the network since the process started

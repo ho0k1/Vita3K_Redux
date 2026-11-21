@@ -18,6 +18,13 @@ bool returns_pointer(const char *name);
 // Android thermal status (0 none ... 6 shutdown), -1 unknown
 void set_thermal_status(int status);
 int thermal_status();
+// Android thermal headroom forecast (PowerManager.getThermalHeadroom): 1.0 = the point where the system starts severe
+// throttling, a few seconds ahead. NaN/negative = unknown
+void set_thermal_headroom(float headroom);
+float thermal_headroom();
+// the status the adaptive resolution acts on: the reported status, raised when the forecast says throttling is near
+// (>= 0.9 counts as MODERATE, >= 1.0 as SEVERE)
+int thermal_level();
 
 // adaptive resolution: the scale the user chose and the one in use now (0 = not active), shown by the FPS overlay
 void set_adaptive_resolution(float base, float current);

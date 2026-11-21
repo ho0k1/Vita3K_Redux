@@ -91,6 +91,24 @@ int thermal_status() {
     return g_thermal_status.load(std::memory_order_relaxed);
 }
 
+static std::atomic<float> g_thermal_headroom{ -1.0f };
+void set_thermal_headroom(float headroom) {
+    g_thermal_headroom.store(headroom, std::memory_order_relaxed);
+}
+float thermal_headroom() {
+    return g_thermal_headroom.load(std::memory_order_relaxed);
+}
+
+int thermal_level() {
+    int level = thermal_status();
+    const float headroom = thermal_headroom();
+    if (headroom >= 1.0f)
+        level = std::max(level, 3);
+    else if (headroom >= 0.9f)
+        level = std::max(level, 2);
+    return level;
+}
+
 bool returns_pointer(const char *name) {
     if (!name)
         return false;

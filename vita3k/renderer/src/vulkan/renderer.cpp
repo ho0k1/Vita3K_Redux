@@ -1701,7 +1701,7 @@ void VKState::render_frame(DisplayState &display, const GxmState &gxm, MemState 
 
 bool VKState::change_resolution(float new_multiplier) {
     const float old_multiplier = res_multiplier;
-    LOG_INFO("[ADAPT] internal resolution {} -> {} (thermal status {}, level {})", res_multiplier, new_multiplier, session_diag::thermal_status(), adapt_level);
+    LOG_INFO("[ADAPT] internal resolution {} -> {} (thermal status {}, forecast {:.2f}, level {})", res_multiplier, new_multiplier, session_diag::thermal_status(), session_diag::thermal_headroom(), adapt_level);
 
     const auto apply = [this](float scale) -> bool {
         try {
@@ -1819,7 +1819,7 @@ void VKState::apply_adaptive_resolution() {
             const bool fast = period_us <= target_period_us * 1.05 || period_us <= adapt_best_period_us * 1.10;
             adapt_last_period_us = period_us;
             // early warning: the phone is already warm (thermal >= 2) and the frame generator needs >11 ms of GPU
-            const bool early = session_diag::thermal_status() >= 2 && vfg_gpu_ms > 11.0f;
+            const bool early = session_diag::thermal_level() >= 2 && vfg_gpu_ms > 11.0f;
             adapt_early_windows = early ? adapt_early_windows + 1 : 0;
             adapt_slow_windows = slow ? adapt_slow_windows + 1 : 0;
             adapt_fast_windows = fast ? adapt_fast_windows + 1 : 0;
@@ -1850,7 +1850,8 @@ void VKState::apply_adaptive_resolution() {
     }
     // never step below min_scale, and never "lower" a base that is already at or below it (the UI allows 0.25x steps)
     const int max_level = std::clamp(static_cast<int>(std::ceil((adapt_base - min_scale) / step - 0.001f)), 0, max_steps);
-    const int thermal = session_diag::thermal_status();
+    // the reported status, raised by the forecast so that the resolution drops before the system throttles
+    const int thermal = session_diag::thermal_level();
 
     int target = adapt_level;
     if (thermal >= 2) {

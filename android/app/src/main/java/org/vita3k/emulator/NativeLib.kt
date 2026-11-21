@@ -159,6 +159,8 @@ object NativeLib {
     external fun getPkgjStatus(): String
     /** PowerManager thermal status (0 none ... 6 shutdown), written to the logs. */
     external fun reportThermalStatus(status: Int)
+    /** PowerManager.getThermalHeadroom forecast (1.0 = severe throttling in about 10 s), NaN if unknown. */
+    external fun reportThermalHeadroom(headroom: Float)
     /** Asks PKGj to cancel the running download and empty its queue. */
     external fun requestPkgjCancel()
     /** Number of downloads PKGj saved for the next start. */
