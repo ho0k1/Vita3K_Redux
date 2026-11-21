@@ -1826,10 +1826,15 @@ void VKState::apply_adaptive_resolution() {
         const double period_us = window_us / adapt_win_frames;
         const int frames = adapt_win_frames;
         // share of the window the GPU spent on game scenes (timestamp queries); -1 when they are not available
-        if (gpu_time_pool) {
+        // only the fence wait thread (memory mapping on) feeds the counter; a window without any reading is "unknown"
+        if (gpu_time_pool && features.enable_memory_mapping) {
             const uint64_t busy_ns = gpu_busy_ns.load(std::memory_order_relaxed);
-            adapt_gpu_util = static_cast<float>(std::min(1.0, static_cast<double>(busy_ns - adapt_busy_ns_mark) / (window_us * 1000.0)));
+            adapt_gpu_util = busy_ns > adapt_busy_ns_mark
+                ? static_cast<float>(std::min(1.0, static_cast<double>(busy_ns - adapt_busy_ns_mark) / (window_us * 1000.0)))
+                : -1.0f;
             adapt_busy_ns_mark = busy_ns;
+        } else {
+            adapt_gpu_util = -1.0f;
         }
         adapt_win_start_us = pace_now_us;
         adapt_win_frames = 0;
@@ -1905,16 +1910,14 @@ void VKState::apply_adaptive_resolution() {
     if (target == adapt_level && window_closed) {
         constexpr int64_t pace_gap_us = 15'000'000;
         const int64_t probe_hold_us = 60'000'000LL << adapt_probe_failures;
-        // a slowdown with an idle GPU is the CPU's (or vsync's): a lower resolution would not bring the frames back
-        const bool gpu_bound = adapt_gpu_util < 0.0f || adapt_gpu_util >= 0.7f;
-        if (!gpu_bound && adapt_slow_windows >= 2) {
-            adapt_slow_windows = 0;
-            if (now_us - adapt_last_log_us >= 60'000'000) {
-                adapt_last_log_us = now_us;
-                LOG_INFO("[ADAPT] frames are slow but the GPU is only {:.0f}% busy: not lowering the resolution", adapt_gpu_util * 100.0f);
-            }
+        // a slowdown with a mostly idle GPU is the CPU's (or vsync's): a lower resolution would not bring the frames back.
+        // Only the game scenes are timed (not the present/upscale passes), so the bar is low on purpose.
+        const bool gpu_bound = adapt_gpu_util < 0.0f || adapt_gpu_util >= 0.5f;
+        if (!gpu_bound && adapt_slow_windows >= 2 && now_us - adapt_last_log_us >= 60'000'000) {
+            adapt_last_log_us = now_us;
+            LOG_INFO("[ADAPT] frames are slow but the GPU is only {:.0f}% busy: not lowering the resolution", adapt_gpu_util * 100.0f);
         }
-        if ((adapt_slow_windows >= 2 || adapt_early_windows >= 3) && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
+        if (((adapt_slow_windows >= 2 && gpu_bound) || adapt_early_windows >= 3) && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
             target = adapt_level + 1;
             if (adapt_last_raise_us != 0 && now_us - adapt_last_raise_us < 30'000'000)
                 adapt_probe_failures = std::min(adapt_probe_failures + 1, 3);
