@@ -46,6 +46,7 @@
 #include <overlay/display_manager.h>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <system_error>
 #include <mutex>
@@ -1829,11 +1830,16 @@ void VKState::apply_adaptive_resolution() {
     if (context && static_cast<VKContext *>(context)->is_recording)
         return;
 
-    constexpr int64_t hot_delay_us = 10'000'000;
+    // Only the resolution answers to heat: the OS throttles the clocks (the game then runs at half speed) once the phone
+    // reaches SEVERE, so the load must come down while it is still MODERATE, and quickly once it is SEVERE
+    constexpr int64_t warm_delay_us = 5'000'000;   // thermal MODERATE
+    constexpr int64_t hot_delay_us = 2'000'000;    // thermal SEVERE or worse
     constexpr int64_t cool_delay_us = 120'000'000;
-    constexpr int64_t min_change_gap_us = 30'000'000;
+    constexpr int64_t warm_gap_us = 15'000'000;
+    constexpr int64_t hot_gap_us = 8'000'000;
     constexpr float step = 0.5f;
-    constexpr int max_steps = 3;
+    constexpr float min_scale = 0.75f; // VSS stretches the picture back to the screen
+    constexpr int max_steps = 4;
 
     const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     // the user picked another scale meanwhile: start over from it
@@ -1842,16 +1848,18 @@ void VKState::apply_adaptive_resolution() {
         adapt_level = 0;
         adapt_applied = 0.0f;
     }
-    // never step below 1x, and never "lower" a base that is already at or below it (the UI allows 0.25x steps)
-    const int max_level = std::clamp(static_cast<int>((adapt_base - 1.0f) / step + 0.001f), 0, max_steps);
+    // never step below min_scale, and never "lower" a base that is already at or below it (the UI allows 0.25x steps)
+    const int max_level = std::clamp(static_cast<int>(std::ceil((adapt_base - min_scale) / step - 0.001f)), 0, max_steps);
     const int thermal = session_diag::thermal_status();
 
     int target = adapt_level;
-    if (thermal >= 3) {
+    if (thermal >= 2) {
+        const bool severe = thermal >= 3;
         adapt_cool_since_us = 0;
         if (adapt_hot_since_us == 0)
             adapt_hot_since_us = now_us;
-        if (now_us - adapt_hot_since_us >= hot_delay_us && now_us - adapt_last_change_us >= min_change_gap_us && adapt_level < max_level)
+        if (now_us - adapt_hot_since_us >= (severe ? hot_delay_us : warm_delay_us)
+            && now_us - adapt_last_change_us >= (severe ? hot_gap_us : warm_gap_us) && adapt_level < max_level)
             target = adapt_level + 1;
     } else if (thermal >= 0 && thermal <= 1) {
         adapt_hot_since_us = 0;
@@ -1894,7 +1902,7 @@ void VKState::apply_adaptive_resolution() {
         return;
     }
 
-    const float new_multiplier = std::max(1.0f, adapt_base - step * static_cast<float>(target));
+    const float new_multiplier = std::max(min_scale, adapt_base - step * static_cast<float>(target));
     const int previous_level = adapt_level;
     adapt_level = target;
     adapt_last_change_us = now_us;
