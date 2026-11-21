@@ -2,6 +2,7 @@
 // Everything here only measures and writes to the normal log; no behaviour changes.
 #pragma once
 
+#include <vector>
 #include <util/log.h>
 
 #include <algorithm>
@@ -108,6 +109,10 @@ public:
         t_end = now_us();
         if (t_begin == 0)
             return;
+        // time between two shown frames: with the frame generator an even 16.7 ms and not 8/25 ms pairs
+        if (last_present_us != 0 && pace_intervals.size() < 4096)
+            pace_intervals.push_back(static_cast<uint32_t>(std::min<uint64_t>(t_end - last_present_us, 1'000'000)));
+        last_present_us = t_end;
         const uint64_t total = t_end - t_begin;
         const uint64_t batches = t_batches - t_begin;
         const uint64_t render = t_render - t_batches;
@@ -161,6 +166,19 @@ private:
                 }
             }
         }
+        if (pace_intervals.size() >= 30) {
+            std::sort(pace_intervals.begin(), pace_intervals.end());
+            const uint32_t median = pace_intervals[pace_intervals.size() / 2];
+            const uint32_t p99 = pace_intervals[std::min(pace_intervals.size() - 1, pace_intervals.size() * 99 / 100)];
+            // an interval more than 40% away from the median is felt as a stutter
+            size_t irregular = 0;
+            for (const uint32_t v : pace_intervals)
+                if (v > median * 1.4 || v < median * 0.6)
+                    ++irregular;
+            LOG_INFO("[PERF] pacing: {} shown frames, median interval {:.1f} ms, p99 {:.1f} ms, irregular {} ({:.1f}%)",
+                pace_intervals.size(), median / 1000.0, p99 / 1000.0, irregular, 100.0 * irregular / pace_intervals.size());
+        }
+        pace_intervals.clear();
         auto &t = totals();
         LOG_INFO("[PERF] 10s: {} frames ({:.1f}/s), avg {:.1f} ms, p95 <= {} ms, max {:.1f} ms, >=33ms {}, >=50ms {}, >=100ms {} | compiles: shaders {} ({:.0f} ms, {} slow), pipelines {} ({:.0f} ms, {} slow), render-thread compile {:.0f} ms | world-stops {} ({:.0f} ms)",
             frames, frames * 1e6 / double(window_us), frames ? sum_us / 1000.0 / frames : 0.0, p95, max_us / 1000.0, over33, over50, over100,
@@ -173,6 +191,8 @@ private:
         buckets.fill(0);
     }
 
+    uint64_t last_present_us = 0;
+    std::vector<uint32_t> pace_intervals;
     uint64_t t_begin = 0, t_batches = 0, t_render = 0, t_end = 0;
     uint64_t last_summary = 0;
     uint64_t last_world_stop_us = 0, window_ws_base = 0;
