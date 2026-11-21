@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 #include "android_state.h"
+#include "jni_string.h"
 
 #include <app/functions.h>
 #include <ime/keyboard.h>
@@ -173,7 +174,7 @@ Java_org_vita3k_emulator_NativeLib_getPkgjStatus(JNIEnv *env, jclass) {
             LOG_WARN("[PKGJ-STATUS] last download failure raw: {}", raw);
         }
     }
-    return env->NewStringUTF(text.c_str());
+    return new_jstring_utf8(env, text);
 }
 
 JNIEXPORT jint JNICALL
@@ -286,7 +287,7 @@ Java_org_vita3k_emulator_NativeLib_getRunningAppTitle(JNIEnv *env, jclass) {
     if (!emuenv || !controller || !controller->is_running())
         return env->NewStringUTF("");
 
-    return env->NewStringUTF(emuenv->current_app_title.c_str());
+    return new_jstring_utf8(env, emuenv->current_app_title);
 }
 
 JNIEXPORT jboolean JNICALL

@@ -104,9 +104,10 @@ bool AppSessionController::begin_launch(const AppLaunchRequest &launch_request, 
     emuenv.install_content_hook = [this](const fs::path &path) {
         const uint32_t installed = install_contents(this->emuenv, path);
         // the apps list must show the new game/DLC right away, without pressing Refresh
-        if (installed)
+        if (installed) {
             scan_apps(this->emuenv);
             background_activity::apps_changed.fetch_add(1, std::memory_order_relaxed);
+        }
         return installed;
     };
 

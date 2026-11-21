@@ -510,7 +510,8 @@ bool rack_looks_intact(const MemState &mem, const System *system, const Rack *ra
 }
 
 void release_rack(State &ngs, MemState &mem, System *system, Rack *rack, bool detach_only) {
-    LOG_DEBUG("[NGSLIFE] release_rack {} ({} voices)", fmt::ptr(rack), rack ? rack->voices.size() : 0);
+    // the rack object may be garbage when detach_only is set: do not read its members before that is known
+    LOG_DEBUG("[NGSLIFE] release_rack {} (detach only: {})", fmt::ptr(rack), detach_only);
     // this function should only be called outside of ngs update and with the scheduler mutex acquired (except when releasing the system)
     if (!rack)
         return;
@@ -560,11 +561,13 @@ void release_rack(State &ngs, MemState &mem, System *system, Rack *rack, bool de
     }
 
     if (detach_only) {
-        LOG_INFO("[NGSLIFE] release_rack {}: detached without destroying ({} voices)", fmt::ptr(rack), rack->voices.size());
-        for (const auto &voice : rack->voices) {
-            if (Voice *v = voice.get(mem))
-                system->voice_scheduler.deque_voice(v);
+        // rack->voices is garbage here (the game reused the memory), so the voices are found through the scheduler
+        // queue instead: only the voice->rack pointer of each queued voice is read
+        {
+            const std::lock_guard<std::recursive_mutex> guard(system->voice_scheduler.mutex);
+            std::erase_if(system->voice_scheduler.queue, [rack](const Voice *v) { return v && v->rack == rack; });
         }
+        LOG_INFO("[NGSLIFE] release_rack {}: detached without destroying", fmt::ptr(rack));
         vector_utils::erase_first(system->racks, rack);
         return;
     }

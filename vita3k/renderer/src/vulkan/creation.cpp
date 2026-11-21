@@ -182,10 +182,6 @@ VKRenderTarget::VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &p
     guest_width = params.width;
     guest_height = params.height;
     registry = state.rt_registry;
-    {
-        const std::lock_guard<std::mutex> lock(registry->mutex);
-        registry->targets.push_back(this);
-    }
 
     vk::ImageUsageFlags color_usage = vk::ImageUsageFlagBits::eColorAttachment;
     if (state.features.support_shader_interlock)
@@ -232,6 +228,10 @@ VKRenderTarget::VKRenderTarget(VKState &state, const SceGxmRenderTargetParams &p
         buffer_info.commandPool = state.frames[i].prerender_pool;
         pre_cmd_buffers[i] = state.device.allocateCommandBuffers(buffer_info);
     }
+
+    // registered last: a constructor that throws earlier never runs the destructor, which would leave a dangling entry
+    const std::lock_guard<std::mutex> lock(registry->mutex);
+    registry->targets.push_back(this);
 }
 
 void VKRenderTarget::resize_for_resolution(VKState &state) {

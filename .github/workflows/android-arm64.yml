@@ -108,9 +108,11 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_DIR }}
+          # the default is 90 days and the Actions storage quota is small
+          retention-days: 7
 
       - name: Publish GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.IS_RELEASE == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -130,4 +132,5 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}-symbols
           path: symbols
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
+          compression-level: 9

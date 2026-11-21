@@ -85,7 +85,7 @@ Java_org_vita3k_emulator_NativeLib_importSaveData(JNIEnv *env, jclass, jstring s
     fs::path src = jstring_to_string(env, src_str);
     if (src.filename_is_dot() || src.filename().empty())
         src = src.parent_path(); // "…/PCSE00000/" has an empty file name
-    if (src.filename().empty())
+    if (src.filename().empty() || src.filename() == ".." || src.filename() == ".")
         return to_jstring(env, "bad folder");
     if (!savedata::is_encrypted(src))
         return to_jstring(env, "not an encrypted savedata folder (sce_pfs/files.db is missing)");

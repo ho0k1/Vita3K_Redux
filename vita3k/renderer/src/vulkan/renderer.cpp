@@ -1745,8 +1745,8 @@ bool VKState::change_resolution(float new_multiplier) {
 void VKState::apply_adaptive_resolution() {
     if (!last_frame_was_game)
         return;
-    // the option was switched off while a step was active: give the user's resolution back
-    if (!adaptive_resolution.load(std::memory_order_relaxed)) {
+    // the option was switched off (or a change failed and the feature gave up) while a step was active: give the user's resolution back
+    if (!adaptive_resolution.load(std::memory_order_relaxed) || adapt_session_disabled) {
         if (adapt_level != 0 && adapt_base != 0.0f && !(context && static_cast<VKContext *>(context)->is_recording)) {
             const float restore = adapt_base;
             adapt_level = 0;
@@ -1833,7 +1833,7 @@ void VKState::apply_adaptive_resolution() {
     constexpr int64_t cool_delay_us = 120'000'000;
     constexpr int64_t min_change_gap_us = 30'000'000;
     constexpr float step = 0.5f;
-    constexpr int max_level = 3;
+    constexpr int max_steps = 3;
 
     const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
     // the user picked another scale meanwhile: start over from it
@@ -1842,6 +1842,8 @@ void VKState::apply_adaptive_resolution() {
         adapt_level = 0;
         adapt_applied = 0.0f;
     }
+    // never step below 1x, and never "lower" a base that is already at or below it (the UI allows 0.25x steps)
+    const int max_level = std::clamp(static_cast<int>((adapt_base - 1.0f) / step + 0.001f), 0, max_steps);
     const int thermal = session_diag::thermal_status();
 
     int target = adapt_level;

@@ -513,6 +513,10 @@ void VKSurfaceCache::purge_for_resolution_change(const float new_multiplier) {
     int dropped = 0;
     const uint32_t max_dimension = state.physical_device.getProperties().limits.maxImageDimension2D;
 
+    const auto can_blit = [&](vk::Format format) {
+        const vk::FormatFeatureFlags features = state.physical_device.getFormatProperties(format).optimalTilingFeatures;
+        return (features & vk::FormatFeatureFlagBits::eBlitSrc) && (features & vk::FormatFeatureFlagBits::eBlitDst);
+    };
     const auto blit_filter = [&](vk::Format format, bool force_nearest) {
         const vk::FormatFeatureFlags features = state.physical_device.getFormatProperties(format).optimalTilingFeatures;
         const bool linear_ok = (features & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) && (features & vk::FormatFeatureFlagBits::eBlitSrc);
@@ -543,6 +547,10 @@ void VKSurfaceCache::purge_for_resolution_change(const float new_multiplier) {
             continue;
         }
         const vk::Format vk_format = info.texture.format;
+        if (!can_blit(vk_format) || (info.raw_image && info.raw_image->image && !can_blit(vk::Format::eR16G16B16A16Uint))) {
+            drop_surface(info);
+            continue;
+        }
         const bool force_nearest = info.format == SCE_GXM_COLOR_BASE_FORMAT_F32 || info.format == SCE_GXM_COLOR_BASE_FORMAT_F32F32;
 
         // same image flags as a freshly created surface

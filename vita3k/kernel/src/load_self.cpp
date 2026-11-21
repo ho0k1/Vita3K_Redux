@@ -332,8 +332,11 @@ static bool unload_func_exports(const uint32_t *nids, const Ptr<uint32_t> *entri
             kernel.export_nids_by_lib.erase(lib_it);
         // only the owner of the plain NID entry may drop it
         if (const auto owner_it = kernel.export_nid_owners.find(nid); owner_it != kernel.export_nid_owners.end() && owner_it->second == library_nid) {
-            kernel.export_nids.erase(nid);
-            kernel.export_nid_owners.erase(owner_it);
+            // a second module exporting the same library NID lost the emplace and must not drop the first one's entry
+            if (const auto export_it = kernel.export_nids.find(nid); export_it != kernel.export_nids.end() && export_it->second == unloaded_address) {
+                kernel.export_nids.erase(export_it);
+                kernel.export_nid_owners.erase(owner_it);
+            }
         }
         // invalidate all lle nid calls
         auto range = kernel.func_binding_infos.equal_range(nid);

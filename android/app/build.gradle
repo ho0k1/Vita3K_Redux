@@ -110,7 +110,8 @@ android {
 			minifyEnabled = true
 			shrinkResources = true
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-			signingConfig = hasCiSigning ? signingConfigs.ci : signingConfigs.debug
+			// never fall back to the public debug key: without the release secrets the APK stays unsigned and cannot be published by mistake
+			signingConfig = hasCiSigning ? signingConfigs.ci : null
 		}
 	}
 

@@ -234,6 +234,15 @@ class DownloadKeepAliveService : Service() {
         stopSelf()
     }
 
+    // Android 15 stops a dataSync service after about 6 h a day and kills the app if it does not stop itself in time
+    override fun onTimeout(startId: Int) {
+        finish(showDone = true)
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        finish(showDone = true)
+    }
+
     override fun onDestroy() {
         running = false
         handler.removeCallbacks(poll)

@@ -113,8 +113,21 @@ std::optional<uint32_t> evaluate_expression(const std::string &expression) {
     return static_cast<uint32_t>(total);
 }
 
+// number of arguments each instruction function reads (it indexes the vector without checking)
+size_t instruction_arg_count(const Instruction instruction) {
+    switch (instruction) {
+    case Instruction::T1_MOV:
+        return 2;
+    case Instruction::A1_MOV:
+        return 3;
+    default:
+        return 0;
+    }
+}
+
 std::optional<std::vector<uint8_t>> encode_instruction(std::string name, const std::string &args_text) {
-    if (to_instruction(name) == Instruction::INVALID)
+    const Instruction instruction = to_instruction(name);
+    if (instruction == Instruction::INVALID)
         return std::nullopt;
 
     std::vector<uint32_t> args;
@@ -129,6 +142,10 @@ std::optional<std::vector<uint8_t>> encode_instruction(std::string name, const s
             break;
         pos = comma + 1;
     }
+
+    // a patch list from the internet must not make the instruction function read missing arguments
+    if (args.size() != instruction_arg_count(instruction))
+        return std::nullopt;
 
     return to_bytes(translate(name, args), 0);
 }
@@ -266,8 +283,12 @@ std::vector<std::string> get_args(std::string inst) {
 uint32_t translate(std::string &inst, std::vector<uint32_t> &args) {
     auto it = instruction_funcs.find(inst);
 
-    if (it != instruction_funcs.end())
+    if (it != instruction_funcs.end()) {
+        // missing arguments read as 0 instead of past the end of the vector
+        if (args.size() < instruction_arg_count(it->second.instruction))
+            args.resize(instruction_arg_count(it->second.instruction), 0);
         return it->second.translate(args);
+    }
 
     LOG_WARN("Instruction {} could not be translated! It will be replaced with NOP", inst);
 
