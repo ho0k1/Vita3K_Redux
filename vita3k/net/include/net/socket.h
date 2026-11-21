@@ -19,6 +19,8 @@
 
 #include <net/types.h>
 
+#include <atomic>
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
@@ -82,8 +84,9 @@ struct PosixSocket : public Socket {
     int sockopt_ip_maxttl = 0;
     int sockopt_tcp_mss_to_advertise = 0;
 
-    int abort_flags = 0;
-    bool is_aborted = false;
+    // set by sceNetSocketAbort from another thread while send/recv/connect loop on them
+    std::atomic<int> abort_flags{ 0 };
+    std::atomic<bool> is_aborted{ false };
 
     explicit PosixSocket(int domain, int type, int protocol)
         : Socket(domain, type, protocol)

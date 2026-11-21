@@ -51,7 +51,11 @@ Root &get_root_paths() {
 }
 
 std::string jstring_to_string(JNIEnv *env, jstring str) {
+    if (!str)
+        return {};
     const char *utf = env->GetStringUTFChars(str, nullptr);
+    if (!utf)
+        return {};
     std::string result(utf);
     env->ReleaseStringUTFChars(str, utf);
     return result;

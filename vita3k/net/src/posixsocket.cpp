@@ -150,13 +150,9 @@ static void convertPosixSockaddrToSce(sockaddr *src, SceNetSockaddr *dst) {
     memcpy(&dst_in->sin_addr, &src_in->sin_addr, sizeof(dst_in->sin_addr));
 }
 
-static bool abort_pending(bool &is_aborded) {
-    if (is_aborded) {
-        is_aborded = false; // Reset the flag for the next operation
-        return true;
-    }
-
-    return false;
+static bool abort_pending(std::atomic<bool> &is_aborded) {
+    // reset the flag for the next operation
+    return is_aborded.exchange(false);
 }
 
 static bool should_abort(int abort_flags, int flags) {
