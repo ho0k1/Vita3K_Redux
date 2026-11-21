@@ -1892,7 +1892,14 @@ void VKState::apply_adaptive_resolution() {
         adapt_cool_since_us = 0;
         if (adapt_hot_since_us == 0)
             adapt_hot_since_us = now_us;
-        if (now_us - adapt_hot_since_us >= (severe ? hot_delay_us : warm_delay_us)
+        // a lower resolution only helps (and only cools) when the GPU is a real part of the load: with the GPU
+        // mostly idle the slowdown is on the CPU side and the extra blur would buy nothing (-1 = not measured yet)
+        const bool gpu_matters = adapt_gpu_util < 0.0f || adapt_gpu_util >= 0.3f;
+        if (!gpu_matters && now_us - adapt_last_log_us >= 60'000'000 && adapt_level < max_level) {
+            adapt_last_log_us = now_us;
+            LOG_INFO("[ADAPT] thermal {} but the GPU is only {:.0f}% busy: keeping the resolution", thermal, adapt_gpu_util * 100.0f);
+        }
+        if (gpu_matters && now_us - adapt_hot_since_us >= (severe ? hot_delay_us : warm_delay_us)
             && now_us - adapt_last_change_us >= (severe ? hot_gap_us : warm_gap_us) && adapt_level < max_level)
             target = adapt_level + 1;
     } else if (thermal >= 0 && thermal <= 1) {
