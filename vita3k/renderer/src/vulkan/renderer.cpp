@@ -987,6 +987,22 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
 
     // Get Queues
     general_queue = device.getQueue(general_family_index, 0);
+
+    {
+        const auto families = physical_device.getQueueFamilyProperties();
+        const uint32_t valid_bits = general_family_index < families.size() ? families[general_family_index].timestampValidBits : 0;
+        gpu_time_period_ns = physical_device_properties.limits.timestampPeriod;
+        if (valid_bits > 0 && gpu_time_period_ns > 0.0f) {
+            gpu_time_mask = valid_bits >= 64 ? ~0ULL : ((1ULL << valid_bits) - 1);
+            try {
+                vk::QueryPoolCreateInfo query_info{ .queryType = vk::QueryType::eTimestamp, .queryCount = gpu_time_slot_count * 2 };
+                gpu_time_pool = device.createQueryPool(query_info);
+            } catch (const vk::SystemError &e) {
+                LOG_WARN("GPU time queries are not available: {}", e.what());
+                gpu_time_pool = nullptr;
+            }
+        }
+    }
     transfer_queue = device.getQueue(transfer_family_index, 0);
 
     // Create Command Pools
@@ -1307,6 +1323,11 @@ void VKState::cleanup() {
     wait_gpu_idle();
 
     stop_gpu_request_wait_thread();
+
+    if (gpu_time_pool) {
+        device.destroy(gpu_time_pool);
+        gpu_time_pool = nullptr;
+    }
 
     context = nullptr;
 
@@ -1801,8 +1822,15 @@ void VKState::apply_adaptive_resolution() {
         adapt_win_start_us = pace_now_us;
     ++adapt_win_frames;
     if (pace_now_us - adapt_win_start_us >= 5'000'000) {
-        const double period_us = static_cast<double>(pace_now_us - adapt_win_start_us) / adapt_win_frames;
+        const double window_us = static_cast<double>(pace_now_us - adapt_win_start_us);
+        const double period_us = window_us / adapt_win_frames;
         const int frames = adapt_win_frames;
+        // share of the window the GPU spent on game scenes (timestamp queries); -1 when they are not available
+        if (gpu_time_pool) {
+            const uint64_t busy_ns = gpu_busy_ns.load(std::memory_order_relaxed);
+            adapt_gpu_util = static_cast<float>(std::min(1.0, static_cast<double>(busy_ns - adapt_busy_ns_mark) / (window_us * 1000.0)));
+            adapt_busy_ns_mark = busy_ns;
+        }
         adapt_win_start_us = pace_now_us;
         adapt_win_frames = 0;
         // loading screens and pauses make windows with very few frames: they say nothing about the load
@@ -1877,6 +1905,15 @@ void VKState::apply_adaptive_resolution() {
     if (target == adapt_level && window_closed) {
         constexpr int64_t pace_gap_us = 15'000'000;
         const int64_t probe_hold_us = 60'000'000LL << adapt_probe_failures;
+        // a slowdown with an idle GPU is the CPU's (or vsync's): a lower resolution would not bring the frames back
+        const bool gpu_bound = adapt_gpu_util < 0.0f || adapt_gpu_util >= 0.7f;
+        if (!gpu_bound && adapt_slow_windows >= 2) {
+            adapt_slow_windows = 0;
+            if (now_us - adapt_last_log_us >= 60'000'000) {
+                adapt_last_log_us = now_us;
+                LOG_INFO("[ADAPT] frames are slow but the GPU is only {:.0f}% busy: not lowering the resolution", adapt_gpu_util * 100.0f);
+            }
+        }
         if ((adapt_slow_windows >= 2 || adapt_early_windows >= 3) && adapt_level < max_level && now_us - adapt_last_change_us >= pace_gap_us) {
             target = adapt_level + 1;
             if (adapt_last_raise_us != 0 && now_us - adapt_last_raise_us < 30'000'000)
@@ -1896,9 +1933,9 @@ void VKState::apply_adaptive_resolution() {
         if (now_us - adapt_last_log_us >= 60'000'000) {
             adapt_last_log_us = now_us;
             const int64_t cool_s = adapt_cool_since_us ? (now_us - adapt_cool_since_us) / 1'000'000 : 0;
-            LOG_INFO("[ADAPT] status: level {} scale {} (base {}), thermal {}, cool {} s of {}, frame period {:.1f} ms (best {:.1f}), VFG GPU {:.1f} ms, slow/fast/early windows {}/{}/{}, probe failures {}",
+            LOG_INFO("[ADAPT] status: level {} scale {} (base {}), thermal {}, cool {} s of {}, frame period {:.1f} ms (best {:.1f}), GPU busy {:.0f}%, VFG GPU {:.1f} ms, slow/fast/early windows {}/{}/{}, probe failures {}",
                 adapt_level, res_multiplier, adapt_base, thermal, cool_s, cool_delay_us / 1'000'000, adapt_last_period_us / 1000.0,
-                adapt_best_period_us / 1000.0, vfg_gpu_ms, adapt_slow_windows, adapt_fast_windows, adapt_early_windows, adapt_probe_failures);
+                adapt_best_period_us / 1000.0, adapt_gpu_util * 100.0f, vfg_gpu_ms, adapt_slow_windows, adapt_fast_windows, adapt_early_windows, adapt_probe_failures);
         }
         return;
     }
@@ -2841,6 +2878,10 @@ void VKState::wait_gpu_idle() {
 
 #ifdef __ANDROID__
 void VKState::cleanup_failed_create() {
+    if (gpu_time_pool) {
+        device.destroy(gpu_time_pool);
+        gpu_time_pool = nullptr;
+    }
     frame_gen.reset();
     screen_renderer.cleanup();
 

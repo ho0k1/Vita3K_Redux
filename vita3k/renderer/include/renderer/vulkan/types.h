@@ -216,6 +216,8 @@ struct VisibilityBuffer {
 struct FenceWaitRequest {
     vk::Fence fence;
     uint64_t serial = 0;
+    // timestamp query slots written by the scenes of this submission (read once the fence has signalled)
+    std::vector<uint32_t> gpu_time_slots;
 };
 
 // request to trigger a notification after the previous fences have been waited for
@@ -454,6 +456,10 @@ struct VKContext : public renderer::Context {
     MacrotileReplay macrotile_replay;
 
     uint64_t recording_serial = 0;
+
+    // GPU busy time: the timestamp slot of the scene being recorded, and the slots finished since the last submit
+    int32_t gpu_time_slot = -1;
+    std::vector<uint32_t> gpu_time_slots_pending;
 
     // used to clamp perform_surface_sync for macrotile targets so that only the rendered macroblocks are written back to guest memory
     int32_t rendered_rect_x0 = INT32_MAX;

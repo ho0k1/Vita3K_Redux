@@ -15,6 +15,7 @@
 // with this program; if not, write to the Free Software Foundation, Inc.,
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+#include <array>
 #include <renderer/vulkan/types.h>
 
 #include <renderer/vulkan/functions.h>
@@ -62,6 +63,8 @@ void VKState::wait_thread_function(const MemState &mem) {
     };
 
     uint64_t pending_max_serial = 0;
+    // timestamp slots of the submissions whose fences are being waited for
+    std::vector<uint32_t> pending_gpu_slots;
 
     bool device_lost = false;
     auto wait_for_fences = [&]() {
@@ -84,6 +87,19 @@ void VKState::wait_thread_function(const MemState &mem) {
                 // don't reset them
                 fences.clear();
                 state.completed_serial.store(pending_max_serial, std::memory_order_release); // seq-248
+                if (state.gpu_time_pool) {
+                    // every scene of these submissions is finished: add up its GPU time
+                    for (const uint32_t slot : pending_gpu_slots) {
+                        std::array<uint64_t, 4> data{}; // {start, available, end, available}
+                        const auto query_result = state.device.getQueryPoolResults(state.gpu_time_pool, slot * 2, 2, sizeof(data), data.data(),
+                            2 * sizeof(uint64_t), vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWithAvailability);
+                        if (query_result == vk::Result::eSuccess && data[1] && data[3]) {
+                            const uint64_t ticks = ((data[2] & state.gpu_time_mask) - (data[0] & state.gpu_time_mask)) & state.gpu_time_mask;
+                            state.gpu_busy_ns.fetch_add(static_cast<uint64_t>(static_cast<double>(ticks) * state.gpu_time_period_ns), std::memory_order_relaxed);
+                        }
+                    }
+                }
+                pending_gpu_slots.clear();
                 break;
             }
             if (result == vk::Result::eTimeout) {
@@ -113,6 +129,7 @@ void VKState::wait_thread_function(const MemState &mem) {
                        [&](FenceWaitRequest &request) {
                            fences.push_back(request.fence);
                            pending_max_serial = std::max(pending_max_serial, request.serial); // seq-248
+                           pending_gpu_slots.insert(pending_gpu_slots.end(), request.gpu_time_slots.begin(), request.gpu_time_slots.end());
                        },
                        [&](NotificationRequest &request) {
                            if (request.notifications[0].address || request.notifications[1].address) {
@@ -438,6 +455,14 @@ void VKContext::start_recording(bool first_in_scene) {
     };
     render_cmd.begin(begin_info);
     prerender_cmd.begin(begin_info);
+
+    gpu_time_slot = -1;
+    if (state.gpu_time_pool) {
+        const uint32_t slot = state.gpu_time_next_slot.fetch_add(1, std::memory_order_relaxed) % VKState::gpu_time_slot_count;
+        prerender_cmd.resetQueryPool(state.gpu_time_pool, slot * 2, 2);
+        prerender_cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, state.gpu_time_pool, slot * 2);
+        gpu_time_slot = static_cast<int32_t>(slot);
+    }
 
     is_recording = true;
 
@@ -796,6 +821,12 @@ void VKContext::stop_recording(const SceGxmNotification &notif1, const SceGxmNot
     if (state.features.enable_memory_mapping && !state.disable_surface_sync && submit)
         surface_info = state.surface_cache.perform_surface_sync();
 
+    if (gpu_time_slot >= 0) {
+        render_cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, state.gpu_time_pool, static_cast<uint32_t>(gpu_time_slot) * 2 + 1);
+        gpu_time_slots_pending.push_back(static_cast<uint32_t>(gpu_time_slot));
+        gpu_time_slot = -1;
+    }
+
     prerender_cmd.end();
     render_cmd.end();
 
@@ -828,9 +859,12 @@ void VKContext::stop_recording(const SceGxmNotification &notif1, const SceGxmNot
         state.frame().destroy_queue.add_buffer(old_ring);
     vertex_ring_retired.clear();
 
+    std::vector<uint32_t> gpu_slots = std::move(gpu_time_slots_pending);
+    gpu_time_slots_pending.clear();
+
     if (state.features.enable_memory_mapping) {
         // send it to the wait queue
-        state.request_queue.push(FenceWaitRequest{ fence, state.submit_serial });
+        state.request_queue.push(FenceWaitRequest{ fence, state.submit_serial, std::move(gpu_slots) });
 
         if (state.mapping_method == MappingMethod::DoubleBuffer) {
             // sync all the visibility buffers

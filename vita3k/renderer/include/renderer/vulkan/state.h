@@ -151,6 +151,17 @@ struct VKState : public renderer::State {
     uint64_t submit_serial = 0;
     std::atomic<uint64_t> completed_serial{ 0 };
 
+    // GPU busy time per scene, measured with timestamp queries (null when the queue cannot do it). Used by the adaptive
+    // resolution to tell a GPU-bound slowdown from a CPU-bound one.
+    static constexpr uint32_t gpu_time_slot_count = 512;
+    vk::QueryPool gpu_time_pool{};
+    float gpu_time_period_ns = 0.0f;
+    uint64_t gpu_time_mask = 0;
+    std::atomic<uint32_t> gpu_time_next_slot{ 0 };
+    std::atomic<uint64_t> gpu_busy_ns{ 0 };
+    uint64_t adapt_busy_ns_mark = 0;
+    float adapt_gpu_util = -1.0f; // GPU busy share of the last frame-pace window, -1 unknown
+
 #ifdef __ANDROID__
     struct CachedNativeBuffer {
         MappedMemory mapping;
