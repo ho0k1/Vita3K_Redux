@@ -19,7 +19,7 @@ import java.util.zip.ZipOutputStream
 /**
  * Packs the emulator logs into one zip in the public Downloads folder:
  *  - vita3k.log               the long-running log
- *  - sessions/ (every .log file)           the newest 3 sessions of each kind (emulator, app, pkgj)
+ *  - sessions/ (every .log file)           every session log kept on disk (the logger rotates old ones)
  *  - device-info.txt          device and build details
  */
 internal object LogExporter {
@@ -41,17 +41,25 @@ internal object LogExporter {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val name = "Vita3K-logs-$stamp.zip"
 
-        openDownloadsStream(context, name).use { out ->
-            ZipOutputStream(out.buffered()).use { zip ->
-                zip.putNextEntry(ZipEntry("device-info.txt"))
-                zip.write(deviceInfo(context).toByteArray())
-                zip.closeEntry()
-                for ((entryName, file) in files) {
-                    zip.putNextEntry(ZipEntry(entryName))
-                    file.inputStream().use { it.copyTo(zip) }
+        val target = openDownloadsTarget(context, name)
+        try {
+            target.open().use { out ->
+                ZipOutputStream(out.buffered()).use { zip ->
+                    zip.putNextEntry(ZipEntry("device-info.txt"))
+                    zip.write(deviceInfo(context).toByteArray())
                     zip.closeEntry()
+                    for ((entryName, file) in files) {
+                        zip.putNextEntry(ZipEntry(entryName))
+                        file.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
             }
+            target.finish()
+        } catch (e: Throwable) {
+            // no half-written zip left in Downloads
+            target.discard()
+            throw e
         }
         name
     }
@@ -68,19 +76,38 @@ internal object LogExporter {
         appendLine("Running app: ${NativeLib.getRunningAppTitle()}")
     }
 
-    private fun openDownloadsStream(context: Context, name: String): OutputStream {
+    private class DownloadsTarget(
+        val open: () -> OutputStream,
+        val finish: () -> Unit,
+        val discard: () -> Unit
+    )
+
+    private fun openDownloadsTarget(context: Context, name: String): DownloadsTarget {
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
                 put(MediaStore.Downloads.MIME_TYPE, "application/zip")
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: error("Cannot create a file in Downloads")
-            return context.contentResolver.openOutputStream(uri) ?: error("Cannot open $name for writing")
+            return DownloadsTarget(
+                open = { context.contentResolver.openOutputStream(uri) ?: error("Cannot open $name for writing") },
+                finish = {
+                    val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+                    context.contentResolver.update(uri, done, null, null)
+                },
+                discard = { runCatching { context.contentResolver.delete(uri, null, null) } }
+            )
         }
         val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         dir.mkdirs()
-        return File(dir, name).outputStream()
+        val file = File(dir, name)
+        return DownloadsTarget(
+            open = { file.outputStream() },
+            finish = {},
+            discard = { runCatching { file.delete() } }
+        )
     }
 }

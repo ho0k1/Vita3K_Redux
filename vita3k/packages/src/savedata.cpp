@@ -33,6 +33,13 @@ static fs::path unique_sibling(const fs::path &dst, std::string_view suffix, boo
         const fs::path candidate = fs_utils::path_concat(dst, fmt::format(".{}{}", i, suffix));
         if (!fs::exists(candidate, ec) && !ec)
             return candidate;
+        // a ".tmp" folder is only ever scratch space: leftovers of a crashed import must not pile up until every
+        // attempt fails (".bak" folders may hold the only copy of a save and stay)
+        if (suffix == ".tmp" && !ec) {
+            fs::remove_all(candidate, ec);
+            if (!ec)
+                return candidate;
+        }
     }
     ec = boost::system::errc::make_error_code(boost::system::errc::file_exists);
     return {};

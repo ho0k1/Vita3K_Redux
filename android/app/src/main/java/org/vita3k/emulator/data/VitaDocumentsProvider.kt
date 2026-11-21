@@ -189,7 +189,7 @@ class VitaDocumentsProvider : DocumentsProvider() {
     }
 
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean {
-        val prefix = if (parentDocumentId == DOC_ROOT) DOC_ROOT else "$parentDocumentId/"
+        val prefix = if (parentDocumentId == DOC_ROOT || parentDocumentId == DOC_ROOT_STORAGE) parentDocumentId else "$parentDocumentId/"
         return documentId != parentDocumentId && documentId.startsWith(prefix)
     }
 
@@ -234,7 +234,7 @@ class VitaDocumentsProvider : DocumentsProvider() {
         val target = File(file.parentFile, safeName)
         if (target.exists() || !file.renameTo(target))
             throw FileNotFoundException("Failed to rename $documentId to $displayName")
-        val parentDocId = documentId.substringBeforeLast('/', DOC_ROOT)
+        val parentDocId = documentId.substringBeforeLast('/', docRootFor(documentId))
         return childDocId(parentDocId, safeName)
     }
 
