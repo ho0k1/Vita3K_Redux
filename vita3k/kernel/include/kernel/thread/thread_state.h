@@ -51,6 +51,7 @@ int preempt_core_count(SceInt32 affinity);
 std::vector<std::shared_ptr<ThreadState>> preempt_runnable_threads(KernelState &kernel, const ThreadState *caller);
 void core_lock_begin_boot(uint32_t boot);
 bool core_lock_shares_core(SceInt32 a, SceInt32 b);
+void core_lock_set_relax_streams(bool on);
 void core_lock_release_for_block();
 void core_lock_take_current();
 std::string core_lock_report(KernelState &kernel);

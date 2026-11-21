@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <util/log.h>
+#include <util/perf_hint.h>
 
 #include <algorithm>
 #include <array>
@@ -114,6 +115,14 @@ public:
             pace_intervals.push_back(static_cast<uint32_t>(std::min<uint64_t>(t_end - last_present_us, 1'000'000)));
         last_present_us = t_end;
         const uint64_t total = t_end - t_begin;
+        {
+            static thread_local bool hint_registered = false;
+            if (!hint_registered) {
+                hint_registered = true;
+                perf_hint::add_current_thread();
+            }
+        }
+        perf_hint::report_frame(static_cast<int64_t>(total) * 1000);
         const uint64_t batches = t_batches - t_begin;
         const uint64_t render = t_render - t_batches;
         const uint64_t present = t_end - t_render;

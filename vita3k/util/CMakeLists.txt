@@ -11,6 +11,7 @@ add_library(
 	src/mem_snapshot.cpp
 	src/session_diag.cpp
 	src/net_utils.cpp
+	src/perf_hint.cpp
 	src/string_utils.cpp
 	src/sysinfo.cpp
 	src/tracy.cpp

@@ -22,6 +22,7 @@
 #include <mem/functions.h>
 #include <mem/ptr.h>
 #include <util/align.h>
+#include <util/perf_hint.h>
 
 #include <util/log.h>
 
@@ -570,6 +571,9 @@ uint32_t g_core_takeovers_logged = 0;
 int64_t g_core_takeover_log_ns = 0;
 int64_t g_core_waited_log_ns = 0;
 std::set<SceUID> g_core_announced;
+// audio streaming threads (ATStream*) are exempt from the single-core turn taking: on a phone they have a free host core,
+// and queueing them behind the game threads of the same Vita core only adds waits (see the first DOA5 log)
+std::atomic<bool> g_core_relax_streams{ true };
 
 thread_local int tls_core = -1;
 thread_local uint64_t tls_core_gen = 0;
@@ -585,6 +589,14 @@ int core_of(const SceInt32 affinity) {
         return -1;
     return cores == 0x10000 ? 0 : cores == 0x20000 ? 1
                                                    : 2;
+}
+
+bool core_exempt(const ThreadState &t) {
+    return g_core_relax_streams.load(std::memory_order_relaxed) && t.name.rfind("ATStream", 0) == 0;
+}
+
+int core_for(const ThreadState &t) {
+    return core_exempt(t) ? -1 : core_of(t.affinity_mask);
 }
 
 std::string core_thread_desc(const ThreadState *t) {
@@ -837,7 +849,7 @@ bool core_still_mine(const int core, const ThreadState *t) {
 }
 
 void core_lock_before_guest(ThreadState &t) {
-    const int want = core_of(t.affinity_mask);
+    const int want = core_for(t);
     if (tls_core >= 0) {
         if (want >= 0 && core_still_mine(want, &t))
             return;
@@ -889,6 +901,10 @@ void core_lock_begin_boot(const uint32_t boot) {
     LOG_INFO("[CORELOCK] game boot {} in this app session: guest threads pinned to the same single core take turns on it, as on a Vita", boot);
 }
 
+void core_lock_set_relax_streams(const bool on) {
+    g_core_relax_streams.store(on, std::memory_order_relaxed);
+}
+
 bool core_lock_shares_core(const SceInt32 a, const SceInt32 b) {
     const int core = core_of(a);
     return core >= 0 && core == core_of(b);
@@ -902,7 +918,7 @@ void core_lock_take_current() {
     ThreadState *const t = g_tls_guest_thread;
     if (!t)
         return;
-    const int want = core_of(t->affinity_mask);
+    const int want = core_for(*t);
     if (want < 0 || core_still_mine(want, t))
         return;
     if (tls_core >= 0)
@@ -1615,6 +1631,16 @@ void ThreadState::run_loop() {
 
             if (gate_waker.load(std::memory_order_relaxed) != 0)
                 wait_wake_gate();
+
+            {
+                // the busy guest threads are part of the frame work for the Android performance hints
+                static thread_local bool hint_checked = false;
+                if (!hint_checked) {
+                    hint_checked = true;
+                    if (priority <= 110 && !core_exempt(*this))
+                        perf_hint::add_current_thread();
+                }
+            }
 
             // Take the guest execution gate before running any guest code
             const bool gated = kernel.accurate_thread_scheduling;

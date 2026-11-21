@@ -559,6 +559,13 @@ static ExitCode load_app_impl(SceUID &main_module_id, EmuEnvState &emuenv, const
         emuenv.cfg.current_config.high_accuracy, emuenv.cfg.current_config.resolution_multiplier, emuenv.cfg.current_config.guest_cores,
         emuenv.cfg.current_config.disable_surface_sync, emuenv.cfg.current_config.file_loading_delay);
     guest_sched_set_cores(emuenv.cfg.current_config.guest_cores);
+    {
+        // an empty file named core_lock_strict in the data folder puts the audio streaming threads back in the turn-taking
+        boost::system::error_code strict_ec;
+        const bool strict = fs::exists(emuenv.shared_path / "core_lock_strict", strict_ec);
+        core_lock_set_relax_streams(!strict);
+        LOG_INFO("[CORELOCK] audio streaming threads (ATStream*) {} the single-core turn taking", strict ? "keep to" : "are exempt from");
+    }
     if (emuenv.kernel.accurate_thread_scheduling)
         LOG_INFO("Accurate thread scheduling enabled: default-affinity guest threads run one at a time, by priority");
     if (emuenv.kernel.preempt_on_wake)
