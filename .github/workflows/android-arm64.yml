@@ -16,6 +16,10 @@ on:
         description: 'Signed release APK (needs the SIGNING_* secrets, see docs/RELEASE.md)'
         type: boolean
         default: false
+      dev_release:
+        description: 'Publish the APK as a GitHub pre-release (release files do not count against the Actions storage quota)'
+        type: boolean
+        default: false
 
 concurrency:
   group: android-${{ github.ref }}
@@ -104,7 +108,24 @@ jobs:
 
       - run: ccache -s
 
+      # a build started by hand with dev_release: the APK goes to a pre-release instead of an artifact
+      - name: Publish dev pre-release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dev_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="dev-${GITHUB_SHA::7}"
+          cp "${{ env.ARTIFACT_DIR }}/app.apk" "Vita3K-PKGj-${tag}-arm64-v8a.apk"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "Vita3K-PKGj-${tag}-arm64-v8a.apk" --clobber
+          else
+            gh release create "$tag" "Vita3K-PKGj-${tag}-arm64-v8a.apk" --prerelease --target "$GITHUB_SHA" \
+              --title "Test build $tag" --notes "Test build from ${GITHUB_SHA} (not a signed release)."
+          fi
+
+      # with the Actions storage quota full this fails; the build itself and the release steps must not depend on it
       - uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ARTIFACT_DIR }}
@@ -128,6 +149,7 @@ jobs:
           ls -la symbols
 
       - uses: actions/upload-artifact@v7
+        continue-on-error: true
         with:
           name: ${{ env.ARTIFACT_NAME }}-symbols
           path: symbols

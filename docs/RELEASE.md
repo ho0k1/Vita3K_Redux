@@ -27,3 +27,6 @@ Repo → Settings → Secrets and variables → Actions → New repository secre
 ## Предупреждения
 - Другой package id и другой ключ: release ставится **рядом** с debug-сборкой, данные и настройки у неё отдельные.
 - R8-минификация не проверялась на устройстве. Если приложение падает на старте, смотрите лог и добавьте правила в `proguard-rules.pro` (JNI-классы и методы `NativeLib`).
+
+## Тестовая сборка без артефактов Actions (квота заполнена)
+Actions → «Android arm64 (fast)» → Run workflow → включить `dev_release`. APK появится в Releases как pre-release `dev-<sha>` (файлы релизов не входят в квоту Actions storage). Подпись у такой сборки отладочная, для проверки на телефоне; публичный релиз по-прежнему делается тегом `v*`.
