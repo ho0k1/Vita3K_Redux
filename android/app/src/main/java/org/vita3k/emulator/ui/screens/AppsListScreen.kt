@@ -667,7 +667,7 @@ private fun AppsListTitle(appVersion: String) {
     }
 }
 
-private const val SHOW_PATCH_MANAGER = false
+private const val SHOW_PATCH_MANAGER = true
 
 @Composable
 private fun AppsListOverflowMenu(
@@ -723,7 +723,7 @@ private fun AppsListOverflowMenu(
                 },
                 onClick = onUserManagement
             )
-            // The patch manager crashed the app on the first tests; hidden until the cause is found
+            // The patch manager used to crash on open: emoji / broken UTF-8 in patch titles aborted the app under CheckJNI (fixed with new_jstring_utf8)
             if (SHOW_PATCH_MANAGER) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.apps_list_menu_patches)) },

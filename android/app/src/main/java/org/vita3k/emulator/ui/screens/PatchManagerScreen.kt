@@ -86,7 +86,8 @@ private fun loadPatchItems(): List<PatchItem> {
         )
         i += 9
     }
-    return items.sortedWith(compareBy({ it.title.lowercase() }, { it.name.lowercase() }))
+    // the key is the identity of a patch and the LazyColumn key: a duplicate entry in the list would crash the screen on open
+    return items.distinctBy { it.key }.sortedWith(compareBy({ it.title.lowercase() }, { it.name.lowercase() }))
 }
 
 private fun downloadPatchList(): String {

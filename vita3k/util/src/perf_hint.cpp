@@ -23,6 +23,7 @@ struct Api {
     void *(*create_session)(void *, const int32_t *, size_t, int64_t) = nullptr;
     int (*report)(void *, int64_t) = nullptr;
     int (*set_threads)(void *, const pid_t *, size_t) = nullptr; // API 34
+    int64_t (*update_rate)(void *) = nullptr;                    // -1: the device has no hint support at all
     void (*close)(void *) = nullptr;
     bool loaded = false;
 };
@@ -31,6 +32,7 @@ std::mutex g_mutex;
 Api g_api;
 void *g_session = nullptr;
 std::vector<pid_t> g_tids;
+bool g_unsupported = false; // the device refused a session once: no more attempts
 std::atomic<bool> g_active{ false };
 std::atomic<int> g_report_errors{ 0 };
 
@@ -45,13 +47,14 @@ void load_api() {
     g_api.create_session = reinterpret_cast<decltype(g_api.create_session)>(dlsym(lib, "APerformanceHint_createSession"));
     g_api.report = reinterpret_cast<decltype(g_api.report)>(dlsym(lib, "APerformanceHint_reportActualWorkDuration"));
     g_api.set_threads = reinterpret_cast<decltype(g_api.set_threads)>(dlsym(lib, "APerformanceHint_setThreads"));
+    g_api.update_rate = reinterpret_cast<decltype(g_api.update_rate)>(dlsym(lib, "APerformanceHint_getPreferredUpdateRateNanos"));
     g_api.close = reinterpret_cast<decltype(g_api.close)>(dlsym(lib, "APerformanceHint_closeSession"));
 }
 
 // g_mutex held
 void rebuild_session() {
     load_api();
-    if (!g_api.get_manager || !g_api.create_session || !g_api.report || g_tids.empty())
+    if (g_unsupported || !g_api.get_manager || !g_api.create_session || !g_api.report || g_tids.empty())
         return;
     if (g_session && g_api.set_threads) {
         if (g_api.set_threads(g_session, g_tids.data(), g_tids.size()) == 0)
@@ -64,11 +67,17 @@ void rebuild_session() {
         g_api.close(g_session);
         g_session = nullptr;
     }
+    const int64_t rate = g_api.update_rate ? g_api.update_rate(manager) : -2;
     std::vector<int32_t> tids(g_tids.begin(), g_tids.end());
     g_session = g_api.create_session(manager, tids.data(), tids.size(), target_ns);
     g_active.store(g_session != nullptr, std::memory_order_release);
-    LOG_INFO("[PERF-HINT] performance hint session {} for {} thread(s), target {:.1f} ms{}", g_session ? "created" : "NOT available", tids.size(),
-        target_ns / 1e6, g_api.set_threads ? "" : " (threads cannot be added later on this Android version)");
+    if (!g_session && g_tids.size() >= 2) {
+        // refused with the render thread and one more: the device (HAL) does not offer sessions to apps, stop trying
+        g_unsupported = true;
+    }
+    LOG_INFO("[PERF-HINT] performance hint session {} for {} thread(s), target {:.1f} ms, preferred update rate {} ns (-1 = no device support, -2 = unknown){}{}",
+        g_session ? "created" : "NOT available", tids.size(), target_ns / 1e6, rate, g_api.set_threads ? "" : " (threads cannot be added later on this Android version)",
+        g_unsupported ? "; giving up" : "");
 }
 } // namespace
 

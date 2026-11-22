@@ -24,6 +24,7 @@
 #include <util/string_utils.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -53,11 +54,42 @@ Root &get_root_paths() {
 std::string jstring_to_string(JNIEnv *env, jstring str) {
     if (!str)
         return {};
-    const char *utf = env->GetStringUTFChars(str, nullptr);
-    if (!utf)
+    // GetStringUTFChars() returns *modified* UTF-8 (emoji as two 3-byte surrogates): decode the UTF-16 ourselves
+    const jsize length = env->GetStringLength(str);
+    const jchar *chars = env->GetStringChars(str, nullptr);
+    if (!chars)
         return {};
-    std::string result(utf);
-    env->ReleaseStringUTFChars(str, utf);
+    std::string result;
+    result.reserve(static_cast<size_t>(length));
+    const auto put = [&result](uint32_t cp) {
+        if (cp < 0x80) {
+            result += static_cast<char>(cp);
+        } else if (cp < 0x800) {
+            result += static_cast<char>(0xC0 | (cp >> 6));
+            result += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp < 0x10000) {
+            result += static_cast<char>(0xE0 | (cp >> 12));
+            result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            result += static_cast<char>(0x80 | (cp & 0x3F));
+        } else {
+            result += static_cast<char>(0xF0 | (cp >> 18));
+            result += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            result += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            result += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    };
+    for (jsize i = 0; i < length; ++i) {
+        const uint32_t unit = chars[i];
+        if (unit >= 0xD800 && unit <= 0xDBFF && i + 1 < length && chars[i + 1] >= 0xDC00 && chars[i + 1] <= 0xDFFF) {
+            put(0x10000 + ((unit - 0xD800) << 10) + (chars[i + 1] - 0xDC00));
+            ++i;
+        } else if (unit >= 0xD800 && unit <= 0xDFFF) {
+            put(0xFFFD); // lone surrogate
+        } else {
+            put(unit);
+        }
+    }
+    env->ReleaseStringChars(str, chars);
     return result;
 }
 
