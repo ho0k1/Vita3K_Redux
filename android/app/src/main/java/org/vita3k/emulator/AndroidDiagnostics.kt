@@ -64,8 +64,14 @@ object AndroidDiagnostics {
                 }
             }
             if (cur.length >= 8) runs.add(cur.toString())
-            sb.append("  tombstone strings (").append(runs.size).append(" total, first 60):\n")
-            for (r in runs.take(60)) sb.append("    ").append(r.take(200)).append('\n')
+            // the first strings are mostly thread names of the VM; the interesting ones (abort message, our frames,
+            // JNI errors, the signal) come later and used to be cut off: print them separately, in order
+            val keys = listOf("libVita3K", "Vita3K", "Abort", "abort", "JNI", "terminate", "what()", "Fatal", "FATAL", "SIG", "signal", "exception", "Exception")
+            val key = runs.filter { r -> keys.any { r.contains(it) } }
+            sb.append("  tombstone strings (").append(runs.size).append(" total), ").append(key.size).append(" crash-related:\n")
+            for (r in key.take(120)) sb.append("    ").append(r.take(240)).append('\n')
+            sb.append("  tombstone strings, first 20:\n")
+            for (r in runs.take(20)) sb.append("    ").append(r.take(160)).append('\n')
         } catch (e: Exception) {
             sb.append("  tombstone: read failed: ").append(e).append('\n')
         }

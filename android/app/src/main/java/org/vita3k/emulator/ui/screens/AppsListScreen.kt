@@ -667,7 +667,9 @@ private fun AppsListTitle(appVersion: String) {
     }
 }
 
-private const val SHOW_PATCH_MANAGER = true
+// The "Game patches" menu entry is hidden in the public beta: the screen crashed the signed Release build on a device
+// (a native abort, cause not found yet; the Reldebug build worked). Set to true to bring it back.
+private const val SHOW_PATCH_MANAGER = false
 
 @Composable
 private fun AppsListOverflowMenu(
