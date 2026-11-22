@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/logo.png" alt="Vita3K Redux" width="160"></p>
+
 # Vita3K Redux
 
 Эмулятор PS Vita для Android (arm64) с упором на плавность и удобство: встроенный PKGj, генерация кадров, адаптивное разрешение по нагреву, русский интерфейс.

@@ -217,7 +217,7 @@ class DownloadKeepAliveService : Service() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val failed = lastStatus?.takeIf { it.state == "error" }
             val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_redux)
                 .setAutoCancel(true)
                 .setContentIntent(openAppIntent())
             if (failed != null) {
@@ -260,7 +260,7 @@ class DownloadKeepAliveService : Service() {
     )
 
     private fun buildOngoing(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(R.mipmap.ic_launcher)
+        .setSmallIcon(R.drawable.ic_stat_redux)
         .setContentTitle(notificationTitle ?: getString(R.string.pkgj_bg_title))
         .setStyle(NotificationCompat.BigTextStyle().bigText(if (queuedList.isEmpty()) text else text + "\n" + queuedList))
         .setContentText(text)
