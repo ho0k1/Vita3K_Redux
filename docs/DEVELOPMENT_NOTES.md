@@ -178,6 +178,6 @@ Vita3K / Vita3K Plus распространяется под **GPLv2** (см. `C
 
 Релиз сделан только на русском: константа `UiLanguages.RUSSIAN_ONLY` (`android/app/src/main/java/org/vita3k/emulator/data/UiLanguages.kt`) принудительно ставит `ru`, прячет выбор языка и вкладку «Интерфейс». Чтобы вернуть выбор языка: `RUSSIAN_ONLY = false` и вернуть `<locale android:name="en"/>` в `res/xml/locales_config.xml`.
 
-## Патчи игр (скрыто)
+## Патчи игр (удалено)
 
-Экран «Патчи игр» отключён константой `SHOW_PATCH_MANAGER = false` в `AppsListScreen.kt`: на подписанной Release-сборке (R8, CMake Release) приложение падало нативным abort (status 6), причина не найдена (на Reldebug экран работал). Диагностика падений теперь печатает в журнал строки tombstone с `libVita3K`, `Abort`, `JNI`. Вернуть: `true`, проверить на Release-сборке.
+Экран «Патчи игр» (скачивание `patchlist.xml`, переключатели) удалён целиком: он давал только исправления 60 кадров/с, которые эмулятор делает сам, а на подписанной Release-сборке падал нативным abort. Убраны Kotlin-экран, маршрут навигации, JNI (`native_patches.cpp`) и строки. Ядро применения патчей из `patch/` осталось как в upstream.

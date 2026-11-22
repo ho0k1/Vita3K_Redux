@@ -36,7 +36,6 @@ import org.vita3k.emulator.ui.screens.InstallBottomSheet
 import org.vita3k.emulator.ui.screens.InstallProgressDialog
 import org.vita3k.emulator.ui.screens.InstallResultDialog
 import org.vita3k.emulator.ui.screens.LicenseSourceDialog
-import org.vita3k.emulator.ui.screens.PatchManagerScreen
 import org.vita3k.emulator.ui.screens.SaveDataScreen
 import org.vita3k.emulator.ui.screens.UserManagementScreen
 import org.vita3k.emulator.ui.screens.settings.SettingsRoute
@@ -54,7 +53,6 @@ private const val ROUTE_INITIAL_SETUP_MANUAL = "initial_setup/manual"
 private const val ROUTE_APPS_LIST = "apps_list"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_USER_MANAGEMENT = "users"
-private const val ROUTE_PATCHES = "patches"
 private const val ROUTE_SAVEDATA = "savedata"
 private const val ROUTE_TROPHIES = "trophies"
 private const val ROUTE_CUSTOM_CONFIG = "settings/custom/{titleId}?appName={appName}"
@@ -324,11 +322,6 @@ fun AppNavigation(
                         launchSingleTop = true
                     }
                 },
-                onOpenPatches = {
-                    navController.navigate(ROUTE_PATCHES) {
-                        launchSingleTop = true
-                    }
-                },
                 onOpenSaveData = {
                     navController.navigate(ROUTE_SAVEDATA) {
                         launchSingleTop = true
@@ -367,10 +360,6 @@ fun AppNavigation(
                 onStorageChanged = { appsListViewModel.refreshAppsList() },
                 onBack = { navController.popBackStack() }
             )
-        }
-
-        composable(ROUTE_PATCHES) {
-            PatchManagerScreen(onBack = { navController.popBackStack() })
         }
 
         composable(ROUTE_SAVEDATA) {

@@ -115,7 +115,6 @@ fun AppsListScreen(
     onOpenSettings: () -> Unit = {},
     onOpenTrophyManager: () -> Unit = {},
     onOpenUserManagement: () -> Unit = {},
-    onOpenPatches: () -> Unit = {},
     onOpenSaveData: () -> Unit = {},
     onOpenWelcomeScreen: () -> Unit = {},
     onOpenCustomConfig: (AppInfo) -> Unit = {},
@@ -206,10 +205,6 @@ fun AppsListScreen(
                                     onUserManagement = {
                                         showOverflowMenu = false
                                         onOpenUserManagement()
-                                    },
-                                    onPatches = {
-                                        showOverflowMenu = false
-                                        onOpenPatches()
                                     },
                                     onSaveData = {
                                         showOverflowMenu = false
@@ -667,10 +662,6 @@ private fun AppsListTitle(appVersion: String) {
     }
 }
 
-// The "Game patches" menu entry is hidden in the public beta: the screen crashed the signed Release build on a device
-// (a native abort, cause not found yet; the Reldebug build worked). Set to true to bring it back.
-private const val SHOW_PATCH_MANAGER = false
-
 @Composable
 private fun AppsListOverflowMenu(
     expanded: Boolean,
@@ -678,7 +669,6 @@ private fun AppsListOverflowMenu(
     onRefresh: () -> Unit,
     onTrophyManager: () -> Unit,
     onUserManagement: () -> Unit,
-    onPatches: () -> Unit,
     onSaveData: () -> Unit,
     onWelcomeScreen: () -> Unit,
     onCheckForUpdates: () -> Unit,
@@ -725,19 +715,6 @@ private fun AppsListOverflowMenu(
                 },
                 onClick = onUserManagement
             )
-            // The patch manager used to crash on open: emoji / broken UTF-8 in patch titles aborted the app under CheckJNI (fixed with new_jstring_utf8)
-            if (SHOW_PATCH_MANAGER) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.apps_list_menu_patches)) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Build,
-                            contentDescription = null
-                        )
-                    },
-                    onClick = onPatches
-                )
-            }
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.apps_list_menu_savedata)) },
                 leadingIcon = {

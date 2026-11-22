@@ -833,19 +833,6 @@
     <string name="settings_bgdl_notif_ok">Уведомления: разрешены</string>
     <string name="settings_bgdl_notif_off">Уведомления: выключены, вы не увидите прогресс и кнопку «Отмена»</string>
     <string name="settings_bgdl_notif_button">Открыть настройки уведомлений</string>
-    <!-- Патчи игр -->
-    <string name="apps_list_menu_patches">Патчи игр</string>
-    <string name="patches_title">Патчи игр</string>
-    <string name="patches_download">Скачать свежие патчи</string>
-    <string name="patches_search">Поиск по игре, патчу или Title ID</string>
-    <string name="patches_owned_only">Только установленные игры</string>
-    <string name="patches_empty">Списка патчей пока нет. Нажмите кнопку обновления сверху, чтобы скачать свежие патчи.</string>
-    <string name="patches_none_match">Под текущие фильтры патчей нет.</string>
-    <string name="patches_game_version">Игра v%1$s</string>
-    <string name="patches_downloaded">Скачано патчей: %1$d.</string>
-    <string name="patches_invalid">Скачанный список патчей недействителен.</string>
-    <string name="patches_save_failed">Не удалось сохранить настройки патчей.</string>
-    <string name="patches_download_failed">Не удалось скачать список патчей: %1$s</string>
     <string name="apps_list_menu_savedata">Сохранения</string>
     <string name="savedata_title">Сохранения и копия</string>
     <string name="savedata_import">Импорт из папки PS Vita</string>

@@ -825,19 +825,6 @@
     <string name="settings_bgdl_notif_ok">Notifications: allowed</string>
     <string name="settings_bgdl_notif_off">Notifications: off, you will not see the progress and the Cancel button</string>
     <string name="settings_bgdl_notif_button">Open notification settings</string>
-    <!-- Game patches -->
-    <string name="apps_list_menu_patches">Game patches</string>
-    <string name="patches_title">Game patches</string>
-    <string name="patches_download">Download latest patches</string>
-    <string name="patches_search">Search by game, patch or title ID</string>
-    <string name="patches_owned_only">Installed games only</string>
-    <string name="patches_empty">No patch list yet. Press the refresh button at the top to download the latest patches.</string>
-    <string name="patches_none_match">No patches match the current filters.</string>
-    <string name="patches_game_version">Game v%1$s</string>
-    <string name="patches_downloaded">Downloaded patches: %1$d.</string>
-    <string name="patches_invalid">The downloaded patch list is not valid.</string>
-    <string name="patches_save_failed">Failed to save the patch settings.</string>
-    <string name="patches_download_failed">Could not download the patch list: %1$s</string>
     <string name="apps_list_menu_savedata">Save data</string>
     <string name="savedata_title">Save data and backup</string>
     <string name="savedata_import">Import from PS Vita folder</string>

@@ -51,13 +51,6 @@ object NativeLib {
     /** Returns the installed application size in bytes, or 0 on error. */
     external fun getAppInstallSize(titleId: String): Long
 
-    // --- Game patches (patchlist.xml) ---
-    /** Flat array, 9 strings per entry: key, title, title ids (comma separated), name, author, note, patch version, game version, "1" when enabled. */
-    external fun getPatchEntries(): Array<String>
-    external fun setPatchEnabled(key: String, enabled: Boolean): Boolean
-    /** Stores a downloaded patchlist.xml. Returns the patch count, -1 when it is invalid, -2 when it cannot be saved. */
-    external fun importPatchList(xml: String): Int
-
     // --- Savedata import/export (PS Vita encrypted format) ---
     /** Flat array, 3 strings per save folder: id, "1" when exportable, "1" when still encrypted. */
     external fun listSaveData(): Array<String>
