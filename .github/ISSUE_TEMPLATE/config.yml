@@ -1,11 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Vita3K Discord
-    url: https://discord.gg/6aGwQzh
-    about: Please ask questions or seek tech support on Discord
-  - name: Report game compatibility
-    url: https://github.com/Vita3K/compatibility
-    about: Please report game compatibility and regressions here
-  - name: Android
-    url: https://github.com/Vita3K/Vita3K-Android/issues
-    about: Please open Android specific issues here
+  - name: Тема на 4pda
+    url: https://4pda.to/forum/
+    about: Вопросы по использованию и обсуждение (ссылку на тему добавим после публикации)
+  - name: Vita3K (оригинал)
+    url: https://github.com/Vita3K/Vita3K
+    about: Vita3K Redux это неофициальный форк. Ошибки, которые есть и в оригинальном Vita3K, лучше проверить там

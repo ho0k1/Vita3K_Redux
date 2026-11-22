@@ -8,7 +8,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '_readme/**'
       - 'pkgj/**'
   workflow_dispatch:
     inputs:
@@ -115,11 +114,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="dev-${GITHUB_SHA::7}"
-          cp "${{ env.ARTIFACT_DIR }}/app.apk" "Vita3K-PKGj-${tag}-arm64-v8a.apk"
+          cp "${{ env.ARTIFACT_DIR }}/app.apk" "Vita3K-Redux-${tag}-arm64-v8a.apk"
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "Vita3K-PKGj-${tag}-arm64-v8a.apk" --clobber
+            gh release upload "$tag" "Vita3K-Redux-${tag}-arm64-v8a.apk" --clobber
           else
-            gh release create "$tag" "Vita3K-PKGj-${tag}-arm64-v8a.apk" --prerelease --target "$GITHUB_SHA" \
+            gh release create "$tag" "Vita3K-Redux-${tag}-arm64-v8a.apk" --prerelease --target "$GITHUB_SHA" \
               --title "Test build $tag" --notes "Test build from ${GITHUB_SHA} (not a signed release)."
           fi
           # keep only the newest test build: delete the older dev-* pre-releases and their tags
@@ -145,9 +144,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp "${{ env.ARTIFACT_DIR }}/app.apk" "Vita3K-PKGj-${GITHUB_REF_NAME}-arm64-v8a.apk"
-          gh release create "$GITHUB_REF_NAME" "Vita3K-PKGj-${GITHUB_REF_NAME}-arm64-v8a.apk" \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          apk="Vita3K-Redux-${GITHUB_REF_NAME}-arm64-v8a.apk"
+          cp "${{ env.ARTIFACT_DIR }}/app.apk" "$apk"
+          # the notes live in the repository: docs/releases/<tag>.md (generated notes when there is no such file)
+          notes=(--generate-notes)
+          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then notes=(--notes-file "docs/releases/${GITHUB_REF_NAME}.md"); fi
+          # beta / rc tags are published as pre-releases
+          flags=()
+          case "$GITHUB_REF_NAME" in *beta*|*rc*|*alpha*) flags=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "$apk" --title "Vita3K Redux ${GITHUB_REF_NAME}" "${notes[@]}" "${flags[@]}"
 
       # the unstripped library lets crash frames like libVita3K.so+0x17BAD98 be resolved with addr2line
       - name: Collect native symbols
