@@ -726,6 +726,8 @@ private fun GpuSettingsSection(
             onShowHelp = onShowHelp
         ) {
             val presetValues = listOf(1.5f, 2.0f, 2.5f)
+            // each resolution preset also sets its paired anisotropic filtering level
+            val presetAniso = listOf(2, 8, 16)
             val presetTitle = stringResource(R.string.settings_gpu_resolution_preset)
             val presetOptions = listOf(
                 stringResource(R.string.settings_gpu_resolution_preset_performance),
@@ -733,12 +735,15 @@ private fun GpuSettingsSection(
                 stringResource(R.string.settings_gpu_resolution_preset_quality),
                 stringResource(R.string.settings_gpu_resolution_preset_custom)
             )
-            SettingsScrollableChoiceField(
+            SettingsChoiceField(
                 title = presetTitle,
                 options = presetOptions,
                 selectedIndex = presetValues.indexOfFirst { it == cfg.resolutionMultiplier }.let { if (it < 0) presetValues.size else it },
                 onSelect = { idx ->
-                    if (idx in presetValues.indices) onUpdate { resolutionMultiplier = presetValues[idx] }
+                    if (idx in presetValues.indices) onUpdate {
+                        resolutionMultiplier = presetValues[idx]
+                        anisotropicFiltering = presetAniso[idx]
+                    }
                 },
                 help = helpEntry(presetTitle, stringResource(R.string.settings_gpu_resolution_preset_desc)),
                 onShowHelp = onShowHelp
@@ -769,7 +774,7 @@ private fun GpuSettingsSection(
             val anisoValues = listOf(1, 2, 4, 8, 16)
             val anisotropicTitle = stringResource(R.string.settings_gpu_anisotropic)
             val anisotropicHelp = helpEntry(anisotropicTitle, stringResource(R.string.settings_gpu_anisotropic_desc))
-            SettingsScrollableChoiceField(
+            SettingsChoiceField(
                 title = anisotropicTitle,
                 options = anisoOptions,
                 selectedIndex = anisoValues.indexOfFirst { it >= cfg.anisotropicFiltering }.coerceAtLeast(0),
