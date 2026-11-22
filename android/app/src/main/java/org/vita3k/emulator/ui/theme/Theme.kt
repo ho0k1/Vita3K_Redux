@@ -12,29 +12,30 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowInsetsControllerCompat
 
-private val AppBackgroundColor = Color(0xFF0E0D14)
-private val AppTopBarColor = Color(0xFF17161D)
+// Palette taken from the Redux logo: deep navy -> violet -> teal
+private val AppBackgroundColor = Color(0xFF0B0D1F)
+private val AppTopBarColor = Color(0xFF12152E)
 
 private val AppColorScheme = darkColorScheme(
-    primary = Color(0xFFF2C27A),        
-    onPrimary = Color(0xFF2A1A00),
-    primaryContainer = Color(0xFF3A2D18),
-    onPrimaryContainer = Color(0xFFFFE3B8),
-    secondary = Color(0xFF9E9E9E),        
-    onSecondary = Color(0xFF1A1A1A),
-    secondaryContainer = Color(0xFF2A2833),
-    onSecondaryContainer = Color(0xFFE0E0E0),
-    tertiary = Color(0xFFBDBDBD),
-    onTertiary = Color(0xFF1A1A1A),
-    background = AppBackgroundColor,      
-    onBackground = Color(0xFFE8E8E8),
+    primary = Color(0xFF2BD0E3),
+    onPrimary = Color(0xFF00262B),
+    primaryContainer = Color(0xFF0E4A55),
+    onPrimaryContainer = Color(0xFFB8F3FA),
+    secondary = Color(0xFFA68BF5),
+    onSecondary = Color(0xFF1C0F4A),
+    secondaryContainer = Color(0xFF2E2465),
+    onSecondaryContainer = Color(0xFFE2D9FF),
+    tertiary = Color(0xFF7FB6FF),
+    onTertiary = Color(0xFF00203F),
+    background = AppBackgroundColor,
+    onBackground = Color(0xFFE6E8F5),
     surface = AppTopBarColor,
-    onSurface = Color(0xFFE8E8E8),
-    surfaceVariant = Color(0xFF2A2833),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    surfaceContainerHigh = Color(0xFF211F29),
-    surfaceContainerHighest = Color(0xFF2A2833),
-    outline = Color(0xFF4A4756),
+    onSurface = Color(0xFFE6E8F5),
+    surfaceVariant = Color(0xFF232649),
+    onSurfaceVariant = Color(0xFFB4B8D6),
+    surfaceContainerHigh = Color(0xFF1A1D3D),
+    surfaceContainerHighest = Color(0xFF232649),
+    outline = Color(0xFF4B4F80),
     error = Color(0xFFFF6B6B),
     onError = Color(0xFF1A0000)
 )
