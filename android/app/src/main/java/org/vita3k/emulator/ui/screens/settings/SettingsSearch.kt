@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import org.vita3k.emulator.R
+import org.vita3k.emulator.data.UiLanguages
 
 @Composable
 internal fun rememberSettingsSearchEntries(
@@ -140,7 +141,9 @@ internal fun rememberSettingsSearchEntries(
         add(entry(SettingsCategory.Emulator, R.string.settings_emulator_pixel_perfect, R.string.settings_emulator_pixel_perfect_desc))
         add(entry(SettingsCategory.Emulator, R.string.settings_emulator_file_loading_delay, R.string.settings_emulator_file_loading_delay_desc))
         if (!isPerApp) {
-            add(entry(SettingsCategory.Interface, R.string.settings_emulator_ui_language, R.string.settings_emulator_ui_language_desc, scope = SettingsScope.Global, keywords = "interface ui app language locale"))
+            if (!UiLanguages.RUSSIAN_ONLY) {
+                add(entry(SettingsCategory.Interface, R.string.settings_emulator_ui_language, R.string.settings_emulator_ui_language_desc, scope = SettingsScope.Global, keywords = "interface ui app language locale"))
+            }
             add(entry(SettingsCategory.Emulator, R.string.settings_emulator_storage_folder, R.string.settings_emulator_storage_folder_desc, scope = SettingsScope.Global, keywords = "storage folder path data directory"))
             add(entry(SettingsCategory.Emulator, R.string.settings_emulator_show_compile_shaders, R.string.settings_emulator_show_compile_shaders_desc, scope = SettingsScope.Global))
             add(entry(SettingsCategory.Emulator, R.string.settings_emulator_check_updates, R.string.settings_emulator_check_updates_desc, scope = SettingsScope.Global))

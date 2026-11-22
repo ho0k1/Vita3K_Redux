@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import org.vita3k.emulator.R
+import org.vita3k.emulator.data.UiLanguages
 
 internal enum class SettingsScope(@StringRes val labelRes: Int?) {
     Both(labelRes = null),
@@ -43,10 +44,12 @@ internal enum class SettingsCategory(
 }
 
 internal fun settingsCategories(isPerApp: Boolean): List<SettingsCategory> {
+    // the Interface tab only holds the language picker: it is hidden together with it in the Russian-only release
+    val hideInterface = UiLanguages.RUSSIAN_ONLY
     return if (isPerApp) {
         SettingsCategory.entries.filter { it != SettingsCategory.Camera && it != SettingsCategory.Interface }
     } else {
-        SettingsCategory.entries.toList()
+        SettingsCategory.entries.filter { !(hideInterface && it == SettingsCategory.Interface) }
     }
 }
 
