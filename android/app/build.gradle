@@ -41,7 +41,7 @@ android {
 
 	defaultConfig {
 		// namespace stays org.vita3k.emulator: it is the Java package the JNI symbols are bound to
-		applicationId = "org.vita3kplus.emulator"
+		applicationId = "org.vita3k.redux" // its own id: must not collide with an installed Vita3K / Vita3K Plus
 		minSdk = 28
 		targetSdk = 35
 		// +1000 keeps it above the 140 of the Vita3K Plus 1.4 based test builds (Android refuses downgrades)

@@ -74,7 +74,7 @@ jobs:
 
       - name: Compute artifact paths
         run: |
-          echo "ARTIFACT_NAME=vita3k-plus-pkgj-$(git rev-parse --short HEAD)-android-arm64" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=vita3k-redux-$(git rev-parse --short HEAD)-android-arm64" >> "$GITHUB_ENV"
           echo "ARTIFACT_DIR=artifacts/out" >> "$GITHUB_ENV"
 
       - name: Prepare release signing
