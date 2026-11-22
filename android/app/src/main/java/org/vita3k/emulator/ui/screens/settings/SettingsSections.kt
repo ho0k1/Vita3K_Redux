@@ -733,7 +733,7 @@ private fun GpuSettingsSection(
                 stringResource(R.string.settings_gpu_resolution_preset_quality),
                 stringResource(R.string.settings_gpu_resolution_preset_custom)
             )
-            SettingsChoiceField(
+            SettingsScrollableChoiceField(
                 title = presetTitle,
                 options = presetOptions,
                 selectedIndex = presetValues.indexOfFirst { it == cfg.resolutionMultiplier }.let { if (it < 0) presetValues.size else it },
@@ -769,7 +769,7 @@ private fun GpuSettingsSection(
             val anisoValues = listOf(1, 2, 4, 8, 16)
             val anisotropicTitle = stringResource(R.string.settings_gpu_anisotropic)
             val anisotropicHelp = helpEntry(anisotropicTitle, stringResource(R.string.settings_gpu_anisotropic_desc))
-            SettingsChoiceField(
+            SettingsScrollableChoiceField(
                 title = anisotropicTitle,
                 options = anisoOptions,
                 selectedIndex = anisoValues.indexOfFirst { it >= cfg.anisotropicFiltering }.coerceAtLeast(0),
