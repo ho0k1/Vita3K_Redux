@@ -238,6 +238,8 @@ fun PatchManagerScreen(onBack: () -> Unit) {
                         Surface(
                             shape = MaterialTheme.shapes.large,
                             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                            // a translucent surface colour has no matching content colour: without this the title is drawn black
+                            contentColor = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(

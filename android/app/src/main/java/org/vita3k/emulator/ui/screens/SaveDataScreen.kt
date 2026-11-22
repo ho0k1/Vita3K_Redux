@@ -298,7 +298,8 @@ fun SaveDataScreen(onBack: () -> Unit) {
                     items(saves, key = { it.id }) { save ->
                         Surface(
                             shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            contentColor = MaterialTheme.colorScheme.onSurface
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(12.dp),
