@@ -15,6 +15,10 @@ on:
         description: 'Signed release APK (needs the SIGNING_* secrets, see docs/RELEASE.md)'
         type: boolean
         default: false
+      publish_tag:
+        description: 'Publish a full (not pre-release) GitHub Release with this tag, e.g. v1.2 (needs release=true; the tag is created on the built commit)'
+        type: string
+        default: ''
       dev_release:
         description: 'Publish the APK as a GitHub pre-release (release files do not count against the Actions storage quota)'
         type: boolean
@@ -139,20 +143,22 @@ jobs:
           # the default is 90 days and the Actions storage quota is small
           retention-days: 7
 
+      # a pushed tag v*, or a manual run with publish_tag (the tag is created on the built commit by the release itself)
       - name: Publish GitHub Release
-        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.IS_RELEASE == 'true' }}
+        if: ${{ (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_tag != '')) && env.IS_RELEASE == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.publish_tag || github.ref_name }}
         run: |
-          apk="Vita3K-Redux-${GITHUB_REF_NAME}-arm64-v8a.apk"
+          apk="Vita3K-Redux-${TAG}-arm64-v8a.apk"
           cp "${{ env.ARTIFACT_DIR }}/app.apk" "$apk"
           # the notes live in the repository: docs/releases/<tag>.md (generated notes when there is no such file)
           notes=(--generate-notes)
-          if [ -f "docs/releases/${GITHUB_REF_NAME}.md" ]; then notes=(--notes-file "docs/releases/${GITHUB_REF_NAME}.md"); fi
+          if [ -f "docs/releases/${TAG}.md" ]; then notes=(--notes-file "docs/releases/${TAG}.md"); fi
           # beta / rc tags are published as pre-releases
           flags=()
-          case "$GITHUB_REF_NAME" in *beta*|*rc*|*alpha*) flags=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" "$apk" --title "Vita3K Redux ${GITHUB_REF_NAME}" "${notes[@]}" "${flags[@]}"
+          case "$TAG" in *beta*|*rc*|*alpha*) flags=(--prerelease) ;; esac
+          gh release create "$TAG" "$apk" --target "$GITHUB_SHA" --title "Vita3K Redux ${TAG}" "${notes[@]}" "${flags[@]}"
 
       # the unstripped library lets crash frames like libVita3K.so+0x17BAD98 be resolved with addr2line
       - name: Collect native symbols

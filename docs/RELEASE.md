@@ -21,6 +21,7 @@ Repo → Settings → Secrets and variables → Actions → New repository secre
 ## 3. Запустить сборку
 - **Вручную:** Actions → «Android arm64 (fast)» → Run workflow → галочка `release`. APK появится в артефактах (`…-release`).
 - **Тегом:** `git tag v1.0 && git push origin v1.0`. Сборка создаст GitHub Release с файлом `Vita3K-Redux-v1.0-arm64-v8a.apk`. Описание берётся из `docs/releases/<тег>.md` (если файла нет, генерируется автоматически); теги с `beta`, `rc` или `alpha` публикуются как pre-release.
+- **Полный релиз без тега в репозитории (через ручной запуск):** Run workflow → `release` + `publish_tag` = `v1.2`. Релиз и тег создаст GitHub на собранном коммите (нужно, если тег нельзя запушить).
 - **Проверка перед публикацией:** Actions → Run workflow → галочки `release` и `dev_release`: подписанная Release-сборка попадёт в pre-release `dev-<sha>` для проверки на телефоне, тег ставить не нужно. Release собирается с R8-минификацией, которую надо проверить на устройстве перед тегом.
 
 Если секрет не задан, шаг подписи остановит сборку с понятной ошибкой.
