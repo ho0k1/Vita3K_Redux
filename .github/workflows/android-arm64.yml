@@ -122,6 +122,14 @@ jobs:
             gh release create "$tag" "Vita3K-PKGj-${tag}-arm64-v8a.apk" --prerelease --target "$GITHUB_SHA" \
               --title "Test build $tag" --notes "Test build from ${GITHUB_SHA} (not a signed release)."
           fi
+          # keep only the newest test build: delete the older dev-* pre-releases and their tags
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | select(.prerelease and (.tag_name | startswith("dev-"))) | "\(.id) \(.tag_name)"' |
+            while read -r id old; do
+              if [ "$old" != "$tag" ]; then
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/$id" || true
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/$old" || true
+              fi
+            done
 
       # with the Actions storage quota full this fails; the build itself and the release steps must not depend on it
       - uses: actions/upload-artifact@v7
