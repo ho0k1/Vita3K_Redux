@@ -34,6 +34,6 @@
 В новой сборке проверить:
 - `[CORELOCK] audio streaming threads (ATStream*) are exempt ...` есть в начале игры; суммарное ожидание на core 2 (`wait_total_ms`) стало заметно меньше, `max` ниже 100 мс. Откат: пустой файл `core_lock_strict` в папке данных эмулятора.
 - `[PERF-HINT] performance hint session created for N thread(s)` (Android 14+ добавляет потоки позже; на Android 13 сессия остаётся из первых потоков). Если написано `NOT available`, подсказки планировщику не сработали.
-- `[ADAPT] thermal 3 but the GPU is only N% busy: keeping the resolution`: разрешение не должно падать до 0.75x при простаивающем GPU.
+- `[ADAPT] thermal 3 but the GPU is only N% busy: keeping the resolution`: разрешение не должно падать при простаивающем GPU (пол адаптивного разрешения 1×).
 - `[PERF] 10s` `>=50ms` и `irregular` в `[PERF] pacing` стали меньше, чем в первом логе (≈ 6–20 / 7–53%).
 - sustained performance mode сознательно не включён: он ограничивает пиковую частоту и мог бы снизить средний fps. Решать по этому логу.

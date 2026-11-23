@@ -1871,7 +1871,7 @@ void VKState::apply_adaptive_resolution() {
     constexpr int64_t warm_gap_us = 15'000'000;
     constexpr int64_t hot_gap_us = 8'000'000;
     constexpr float step = 0.5f;
-    constexpr float min_scale = 0.75f; // VSS stretches the picture back to the screen
+    constexpr float min_scale = 1.0f; // never below native: 0.75x looked bad in practice (user report)
     constexpr int max_steps = 4;
 
     const int64_t now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
