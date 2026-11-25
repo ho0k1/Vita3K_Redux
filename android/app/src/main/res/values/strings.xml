@@ -855,4 +855,6 @@
     <string name="settings_gpu_frame_generation">Frame generation (experimental)</string>
     <string name="settings_gpu_frame_generation_desc">Shows an extra frame computed between two game frames (30 FPS looks like 60). Vulkan only. Adds about one frame of delay and can show artifacts on fast scenes, text and 2D games. Uses extra GPU time.</string>
     <string name="thermal_hint">The phone is overheating and throttling. The "Performance" resolution mode (Settings → Graphics) runs cooler.</string>
+    <string name="settings_emulator_sustained">Sustained performance</string>
+    <string name="settings_emulator_sustained_desc">Asks the system to hold a steady CPU/GPU clock slightly below the peak to avoid overheating and sharp frequency drops. Not supported on every phone. Applies at the next game start.</string>
 </resources>

@@ -178,8 +178,8 @@
     <string name="updates_official_available_title">Доступна официальная сборка</string>
     <string name="updates_latest_build">Последняя сборка</string>
     <string name="updates_open_download_page">Открыть страницу загрузки</string>
-    <string name="updates_summary_available">Доступна более новая сборка Vita3K.\n\nТекущая версия: %1$s\nПоследняя версия: %2$s</string>
-    <string name="updates_summary_available_with_date">Доступна более новая сборка Vita3K.\n\nТекущая версия: %1$s\nПоследняя версия: %2$s\nОпубликована: %3$s</string>
+    <string name="updates_summary_available">Доступна новая версия Vita3K Redux.\n\nТекущая версия: %1$s\nПоследняя версия: %2$s</string>
+    <string name="updates_summary_available_with_date">Доступна новая версия Vita3K Redux.\n\nТекущая версия: %1$s\nПоследняя версия: %2$s\nОпубликована: %3$s</string>
     <string name="updates_summary_custom_build">Вы используете неофициальную сборку или сборку из PR.\n\nПосле обновления вы перейдёте на последнюю официальную сборку и покинете эту.\n\nПоследняя официальная сборка: %1$s</string>
     <string name="updates_summary_custom_build_with_date">Вы используете неофициальную сборку или сборку из PR.\n\nПосле обновления вы перейдёте на последнюю официальную сборку и покинете эту.\n\nПоследняя официальная сборка: %1$s\nОпубликована: %2$s</string>
 
@@ -667,7 +667,7 @@
     <string name="settings_emulator_show_compile_shaders">Подсказка о компиляции шейдеров</string>
     <string name="settings_emulator_show_compile_shaders_desc">Показывать подсказку, когда во время игры компилируются шейдеры.</string>
     <string name="settings_emulator_check_updates">Проверка обновлений</string>
-    <string name="settings_emulator_check_updates_desc">Выберите, проверять ли обновления при запуске.\n«Проверять» уведомит о выходе более новой сборки, «Не проверять» отключает проверку при запуске.</string>
+    <string name="settings_emulator_check_updates_desc">При запуске приложение проверяет, вышла ли новая версия на GitHub, и один раз предлагает открыть страницу релиза. Проверить вручную можно в меню списка игр: «Проверить обновления».</string>
     <string name="settings_emulator_check_updates_check">Проверять</string>
     <string name="settings_emulator_check_updates_dont_check">Не проверять</string>
     <string name="settings_emulator_archive_log">Архивировать журнал</string>
@@ -863,4 +863,6 @@
     <string name="settings_gpu_frame_generation">Генерация кадров (экспериментально)</string>
     <string name="settings_gpu_frame_generation_desc">Показывает дополнительный кадр, рассчитанный между двумя кадрами игры (30 кадров выглядят как 60). Только Vulkan. Добавляет около кадра задержки, возможны артефакты на быстрых сценах, тексте и 2D-играх. Расходует время GPU.</string>
     <string name="thermal_hint">Телефон перегрелся и снижает частоту. Режим разрешения «Производительность» (Настройки → Графика) греет меньше.</string>
+    <string name="settings_emulator_sustained">Стабильная производительность</string>
+    <string name="settings_emulator_sustained_desc">Система держит ровную частоту процессора и GPU чуть ниже максимальной, чтобы телефон не перегревался и не сбрасывал частоты резко. Поможет в долгих сессиях, средний FPS в начале может быть немного ниже. Работает не на всех телефонах. Применяется при следующем запуске игры.</string>
 </resources>

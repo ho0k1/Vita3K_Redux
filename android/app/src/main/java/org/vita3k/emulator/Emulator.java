@@ -250,6 +250,21 @@ public class Emulator extends SDLActivity
         updateControllerConnectionState();
         resumeFromBackgroundIfNeeded();
         maybeRequestNotificationPermission();
+        applySustainedPerformance();
+    }
+
+    // Optional setting: the system holds a steady CPU/GPU clock a little below the peak instead of letting the
+    // SoC overheat and then drop the frequency sharply. Off by default.
+    private void applySustainedPerformance() {
+        try {
+            final boolean wanted = getSharedPreferences("redux_perf", MODE_PRIVATE).getBoolean("sustained", false);
+            final android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            final boolean supported = pm != null && pm.isSustainedPerformanceModeSupported();
+            getWindow().setSustainedPerformanceMode(wanted && supported);
+            Log.i("Vita3K", "[PERF-MODE] sustained performance requested=" + wanted + " supported=" + supported);
+        } catch (Throwable t) {
+            Log.w("Vita3K", "[PERF-MODE] sustained performance mode failed: " + t);
+        }
     }
 
     private boolean notificationPermissionAsked = false;

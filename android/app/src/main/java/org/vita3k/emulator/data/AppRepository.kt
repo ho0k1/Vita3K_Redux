@@ -17,11 +17,24 @@ internal object AppRepository {
         "https://api.github.com/repos/Vita3K/compatibility/releases/latest"
     private const val COMPAT_DB_URL =
         "https://github.com/Vita3K/compatibility/releases/download/compat_db/app_compat_db.xml.zip"
-    private const val UPDATE_CHECK_ENABLED = false
+    private const val UPDATE_CHECK_ENABLED = true
     private const val UPDATE_RELEASE_URL =
-        "https://api.github.com/repos/nckstwrt/Vita3K-Plus/releases/latest"
+        "https://api.github.com/repos/ho0k1/Vita3K_Redux/releases/latest"
     private const val UPDATE_PAGE_URL =
-        "https://github.com/nckstwrt/Vita3K-Plus/releases/latest"
+        "https://github.com/ho0k1/Vita3K_Redux/releases/latest"
+    private val versionTripleRegex = Regex("""(\d+)\.(\d+)(?:\.(\d+))?""")
+
+    private fun versionTriple(text: String): Triple<Int, Int, Int>? {
+        val m = versionTripleRegex.find(text) ?: return null
+        return Triple(
+            m.groupValues[1].toIntOrNull() ?: return null,
+            m.groupValues[2].toIntOrNull() ?: return null,
+            m.groupValues[3].toIntOrNull() ?: 0
+        )
+    }
+
+    private fun compareTriple(a: Triple<Int, Int, Int>, b: Triple<Int, Int, Int>): Int =
+        compareValuesBy(a, b, { it.first }, { it.second }, { it.third })
     private val compatVersionRegex =
         Regex("""Last updated: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z)""")
     private val updateBuildRegex = Regex("""Vita3K Build:\s*(\d+)""")
@@ -106,13 +119,13 @@ internal object AppRepository {
         if (!UPDATE_CHECK_ENABLED)
             return@withContext UpdateCheckResult(
                 status = UpdateCheckStatus.UpToDate,
-                message = "Update checks are not available in this build.",
+                message = "Проверка обновлений в этой сборке недоступна.",
                 currentDisplayVersion = currentDisplayVersion
             )
         val response = httpGetString(UPDATE_RELEASE_URL)
             ?: return@withContext UpdateCheckResult(
                 status = UpdateCheckStatus.Failed,
-                message = "Could not retrieve the latest Vita3K release information. Please try again later.",
+                message = "Не удалось получить данные о последней версии. Проверьте интернет и попробуйте позже.",
                 currentDisplayVersion = currentDisplayVersion
             )
 
@@ -121,55 +134,47 @@ internal object AppRepository {
         } catch (_: Exception) {
             return@withContext UpdateCheckResult(
                 status = UpdateCheckStatus.Failed,
-                message = "The GitHub release response could not be parsed.",
+                message = "Не удалось разобрать ответ GitHub.",
                 currentDisplayVersion = currentDisplayVersion
             )
         }
 
-        val body = root.optString("body").orEmpty()
-        val latestBuildNumber = updateBuildRegex.find(body)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        val tagName = root.optString("tag_name").trim()
+        val latest = versionTriple(tagName)
             ?: return@withContext UpdateCheckResult(
                 status = UpdateCheckStatus.Failed,
-                message = "The latest release does not advertise a usable Vita3K build number.",
+                message = "В последнем релизе не указан номер версии.",
                 currentDisplayVersion = currentDisplayVersion
             )
+        val current = versionTriple(appVersion)
 
         val releaseName = root.optString("name").trim()
-        val tagName = root.optString("tag_name").trim()
         val releaseUrl = root.optString("html_url").trim().ifBlank { UPDATE_PAGE_URL }
         val info = UpdateInfo(
-            version = releaseName.ifBlank { tagName },
-            buildNumber = latestBuildNumber,
+            version = tagName.ifBlank { releaseName },
+            buildNumber = 0L,
             releaseUrl = releaseUrl,
             publishedAt = root.optString("published_at").trim(),
-            notes = normalizedUpdateNotes(body)
+            notes = normalizedUpdateNotes(root.optString("body").orEmpty())
         )
 
-        val currentBuildNumber = currentBuildRegex.find(appVersion)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
-        val buildDelta = latestBuildNumber - currentBuildNumber
-
+        val delta = if (current == null) 1 else compareTriple(latest, current)
         when {
-            !officialBuild -> UpdateCheckResult(
-                status = UpdateCheckStatus.CustomBuildCanUpdate,
-                message = "",
-                info = info,
-                currentDisplayVersion = currentDisplayVersion
-            )
-            buildDelta > 0L -> UpdateCheckResult(
+            delta > 0 -> UpdateCheckResult(
                 status = UpdateCheckStatus.UpdateAvailable,
                 message = "",
                 info = info,
                 currentDisplayVersion = currentDisplayVersion
             )
-            buildDelta < 0L -> UpdateCheckResult(
+            delta < 0 -> UpdateCheckResult(
                 status = UpdateCheckStatus.CurrentBuildNewerThanLatest,
-                message = "This installation appears newer than the latest official continuous build.",
+                message = "Установленная версия новее последнего релиза на GitHub.",
                 info = info,
                 currentDisplayVersion = currentDisplayVersion
             )
             else -> UpdateCheckResult(
                 status = UpdateCheckStatus.UpToDate,
-                message = "You already have the latest official build installed.",
+                message = "У вас установлена последняя версия.",
                 info = info,
                 currentDisplayVersion = currentDisplayVersion
             )

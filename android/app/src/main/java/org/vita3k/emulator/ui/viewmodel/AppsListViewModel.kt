@@ -144,8 +144,14 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun dismissUpdateCheckResult() {
+        updateCheckResult?.takeIf { it.status == UpdateCheckStatus.UpdateAvailable }?.let {
+            updatePrefs().edit().putString("dismissed_tag", it.info.version).apply()
+        }
         updateCheckResult = null
     }
+
+    private fun updatePrefs() =
+        getApplication<Application>().getSharedPreferences("redux_update", Context.MODE_PRIVATE)
 
     // Returns the actions available for a title, defaulting to emptySet() until the
     // async fetch completes (prevents showing all actions as enabled before data arrives).
@@ -255,7 +261,12 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
                     appVersion = appVersion,
                     officialBuild = NativeLib.isOfficialBuild()
                 )
-                if (manual || result.status == UpdateCheckStatus.UpdateAvailable || result.status == UpdateCheckStatus.CustomBuildCanUpdate) {
+                if (manual) {
+                    updateCheckResult = result
+                } else if (result.status == UpdateCheckStatus.UpdateAvailable &&
+                    result.info.version != updatePrefs().getString("dismissed_tag", null)
+                ) {
+                    // the startup prompt appears once per release: it is remembered as soon as it is answered
                     updateCheckResult = result
                 }
             } catch (cancelled: CancellationException) {
@@ -351,8 +362,8 @@ class AppsListViewModel(application: Application) : AndroidViewModel(application
 
         startupUpdateCheckStarted = true
         viewModelScope.launch {
-            val enabled = runCatching { (NativeLib.getGlobalConfig()?.checkForUpdatesMode ?: 0) != 0 }.getOrDefault(false)
-            if (enabled) {
+            // on by default (the stored emulator option is not used: older configs have it switched off)
+            if (updatePrefs().getBoolean("startup_check", true)) {
                 checkForUpdates(manual = false)
             }
         }

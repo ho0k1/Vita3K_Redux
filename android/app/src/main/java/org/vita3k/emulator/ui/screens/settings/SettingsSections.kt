@@ -1884,6 +1884,9 @@ private fun EmulatorSettingsSection(
                 ),
                 onShowHelp = onShowHelp
             )
+            val appContext = LocalContext.current.applicationContext
+            val updatePrefs = remember { appContext.getSharedPreferences("redux_update", android.content.Context.MODE_PRIVATE) }
+            var startupCheck by remember { mutableStateOf(updatePrefs.getBoolean("startup_check", true)) }
             val updateModeTitle = stringResource(R.string.settings_emulator_check_updates)
             SettingsChoiceField(
                 title = updateModeTitle,
@@ -1891,16 +1894,31 @@ private fun EmulatorSettingsSection(
                     stringResource(R.string.settings_emulator_check_updates_check),
                     stringResource(R.string.settings_emulator_check_updates_dont_check)
                 ),
-                selectedIndex = if (cfg.checkForUpdatesMode == 0) 1 else 0,
+                selectedIndex = if (startupCheck) 0 else 1,
                 onSelect = { index ->
-                    onUpdate {
-                        checkForUpdatesMode = if (index == 0) 1 else 0
-                        checkForUpdates = checkForUpdatesMode != 0
-                    }
+                    startupCheck = index == 0
+                    updatePrefs.edit().putBoolean("startup_check", startupCheck).apply()
                 },
                 help = SettingsHelpEntry(
                     title = updateModeTitle,
                     body = stringResource(R.string.settings_emulator_check_updates_desc),
+                    scope = SettingsScope.Global
+                ),
+                onShowHelp = onShowHelp
+            )
+            val perfPrefs = remember { appContext.getSharedPreferences("redux_perf", android.content.Context.MODE_PRIVATE) }
+            var sustained by remember { mutableStateOf(perfPrefs.getBoolean("sustained", false)) }
+            val sustainedTitle = stringResource(R.string.settings_emulator_sustained)
+            SettingsToggleRow(
+                title = sustainedTitle,
+                checked = sustained,
+                onCheckedChange = {
+                    sustained = it
+                    perfPrefs.edit().putBoolean("sustained", it).apply()
+                },
+                help = SettingsHelpEntry(
+                    title = sustainedTitle,
+                    body = stringResource(R.string.settings_emulator_sustained_desc),
                     scope = SettingsScope.Global
                 ),
                 onShowHelp = onShowHelp
