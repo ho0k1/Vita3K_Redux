@@ -26,6 +26,10 @@
 
 struct MemState;
 
+// PKGj only: JIT code reaches guest memory through callbacks instead of direct page-table/fastmem loads.
+// A fault inside JIT code is fatal in Dynarmic ("Segfault wasn't at a fastmem patch location"), a callback fault is handled.
+void cpu_set_direct_memory(bool enabled);
+
 CPUStatePtr init_cpu(bool cpu_opt, SceUID thread_id, std::size_t processor_id, MemState &mem);
 int run(CPUState &state);
 int step(CPUState &state);

@@ -44,6 +44,12 @@ SceUID get_thread_id(CPUState &state) {
     return state.thread_id;
 }
 
+std::atomic<bool> g_cpu_direct_memory{ true };
+
+void cpu_set_direct_memory(bool enabled) {
+    g_cpu_direct_memory.store(enabled, std::memory_order_relaxed);
+}
+
 CPUStatePtr init_cpu(bool cpu_opt, SceUID thread_id, std::size_t processor_id, MemState &mem) {
     CPUStatePtr state(new CPUState(), delete_cpu_state);
     state->mem = &mem;

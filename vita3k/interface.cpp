@@ -575,6 +575,8 @@ static ExitCode load_app_impl(SceUID &main_module_id, EmuEnvState &emuenv, const
     core_lock_begin_boot(game_boots);
     guest_assert_begin_boot();
 
+    // PKGj is a menu: slower memory access is irrelevant, a fault inside JIT code (Dynarmic aborts the process) is not
+    cpu_set_direct_memory(emuenv.io.title_id != "PKGJ00000");
     if (!emuenv.kernel.init(emuenv.mem, call_import, emuenv.cfg.current_config.cpu_opt)) {
         LOG_WARN("Failed to init kernel!");
         return KernelInitFailed;

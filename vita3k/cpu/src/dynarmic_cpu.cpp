@@ -661,17 +661,20 @@ public:
 
 Dynarmic::ExclusiveMonitor DynarmicCPU::shared_monitor(MAX_CORE_COUNT);
 
+extern std::atomic<bool> g_cpu_direct_memory;
+
 std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
+    const bool direct_memory = g_cpu_direct_memory.load(std::memory_order_relaxed);
     Dynarmic::A32::UserConfig config{};
     config.arch_version = Dynarmic::A32::ArchVersion::v7;
     config.callbacks = cb.get();
     if (parent->mem->use_page_table) {
-        config.page_table = (log_mem || !cpu_opt) ? nullptr : reinterpret_cast<decltype(config.page_table)>(parent->mem->page_table.get());
+        config.page_table = (log_mem || !cpu_opt || !direct_memory) ? nullptr : reinterpret_cast<decltype(config.page_table)>(parent->mem->page_table.get());
         config.absolute_offset_page_table = true;
         // the fast path reads through the first page only (so the page straddling accesses must use the callbacks)
         config.detect_misaligned_access_via_page_table = 16 | 32 | 64;
         config.only_detect_misalignment_via_page_table_on_page_boundary = true;
-    } else if (!log_mem && cpu_opt) {
+    } else if (!log_mem && cpu_opt && direct_memory) {
         config.fastmem_pointer = std::bit_cast<uintptr_t>(parent->mem->memory.get());
     }
     config.hook_hint_instructions = true;
