@@ -19,6 +19,7 @@
 #include "SceNet.h"
 
 #include <kernel/state.h>
+#include <kernel/thread/thread_state.h>
 
 #include <net/state.h>
 
@@ -35,6 +36,14 @@
 #endif
 
 #include <util/tracy.h>
+
+// These calls can block for seconds (stalled connection, slow DNS or server). The guest scheduler token and the
+// single-core turn must be given back first, otherwise one waiting socket freezes every other guest thread
+// (seen as a dead freeze of PKGj when a second download was queued).
+static void net_release_for_block() {
+    guest_sched_release_for_block();
+    core_lock_release_for_block();
+}
 TRACY_MODULE_NAME(SceNet);
 
 template <>
@@ -139,6 +148,7 @@ static int ret_net_errno(EmuEnvState &emuenv, int thread_id, int ret) {
 
 EXPORT(int, sceNetAccept, int sid, SceNetSockaddr *addr, unsigned int *addrlen) {
     TRACY_FUNC(sceNetAccept, sid, addr, addrlen);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
     if (!sock)
         RET_NET_ERRNO(SCE_NET_ERROR_EBADF);
@@ -167,6 +177,7 @@ EXPORT(int, sceNetClearDnsCache) {
 
 EXPORT(int, sceNetConnect, int sid, const SceNetSockaddr *addr, unsigned int addrlen) {
     TRACY_FUNC(sceNetConnect, sid, addr, addrlen);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
     RET_NET_ERRNO(sock ? sock->connect(addr, addrlen) : SCE_NET_ERROR_EBADF);
@@ -250,6 +261,7 @@ EXPORT(int, sceNetEpollDestroy, int eid) {
 
 EXPORT(int, sceNetEpollWait, int eid, SceNetEpollEvent *events, int maxevents, int timeout) {
     TRACY_FUNC(sceNetEpollWait, eid, events, maxevents, timeout);
+    net_release_for_block();
     auto epoll = lock_and_find(eid, emuenv.net.epolls, emuenv.kernel.mutex);
 
     RET_NET_ERRNO(epoll ? epoll->wait(events, maxevents, timeout) : SCE_NET_ERROR_EBADF);
@@ -516,6 +528,7 @@ EXPORT(SceUInt16, sceNetNtohs, SceUInt16 n) {
 
 EXPORT(int, sceNetRecv, int sid, void *buf, unsigned int len, int flags) {
     TRACY_FUNC(sceNetRecv, sid, buf, len, flags);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
     const int received = sock ? sock->recv_packet(buf, len, flags, nullptr, 0) : SCE_NET_ERROR_EBADF;
@@ -525,6 +538,7 @@ EXPORT(int, sceNetRecv, int sid, void *buf, unsigned int len, int flags) {
 
 EXPORT(int, sceNetRecvfrom, int sid, void *buf, unsigned int len, int flags, SceNetSockaddr *from, unsigned int *fromlen) {
     TRACY_FUNC(sceNetRecvfrom, sid, buf, len, flags, from, fromlen);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
     const int received = sock ? sock->recv_packet(buf, len, flags, from, fromlen) : SCE_NET_ERROR_EBADF;
@@ -561,6 +575,7 @@ EXPORT(int, sceNetResolverGetError) {
 
 EXPORT(int, sceNetResolverStartAton, int rid, const SceNetInAddr *addr, char *hostname, int len, int timeout, int retry, int flags) {
     TRACY_FUNC(sceNetResolverStartAton, rid, addr, hostname, len, timeout, retry, flags);
+    net_release_for_block();
     struct hostent *resolved = gethostbyaddr((const char *)addr, len, AF_INET);
     strcpy(hostname, resolved->h_name);
     return 0;
@@ -568,6 +583,7 @@ EXPORT(int, sceNetResolverStartAton, int rid, const SceNetInAddr *addr, char *ho
 
 EXPORT(int, sceNetResolverStartNtoa, int rid, const char *hostname, SceNetInAddr *addr, int timeout, int retry, int flags) {
     TRACY_FUNC(sceNetResolverStartNtoa, rid, hostname, addr, timeout, retry, flags);
+    net_release_for_block();
     struct hostent *resolved = gethostbyname(hostname);
     if (resolved == nullptr) {
         LOG_WARN("Failed to resolve host '{}'", hostname ? hostname : "(null)");
@@ -581,6 +597,7 @@ EXPORT(int, sceNetResolverStartNtoa, int rid, const char *hostname, SceNetInAddr
 
 EXPORT(int, sceNetSend, int sid, const void *msg, unsigned int len, int flags) {
     TRACY_FUNC(sceNetSend, sid, msg, len, flags);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
 
     RET_NET_ERRNO(sock ? sock->send_packet(msg, len, flags, nullptr, 0) : SCE_NET_ERROR_EBADF);
@@ -613,6 +630,7 @@ EXPORT(int, sceNetSendmsg, int sid, const SceNetMsghdr *msg, int flags) {
 
 EXPORT(int, sceNetSendto, int sid, const void *msg, unsigned int len, int flags, const SceNetSockaddr *to, unsigned int tolen) {
     TRACY_FUNC(sceNetSendto, sid, msg, len, flags, to, tolen);
+    net_release_for_block();
     auto sock = lock_and_find(sid, emuenv.net.socks, emuenv.kernel.mutex);
     if (!sock)
         RET_NET_ERRNO(SCE_NET_ERROR_EBADF);
