@@ -1,0 +1,39 @@
+diff --git a/src/downloader.cpp b/src/downloader.cpp
+index 9d735b7..edaf993 100644
+--- a/src/downloader.cpp
++++ b/src/downloader.cpp
+@@ -433,11 +433,13 @@ void Downloader::write_status(
+ {
+     DownloadItem cur;
+     size_t queued;
++    std::string last_raw;
+     std::string queued_names;
+     {
+         ScopeLock _(_cond.get_mutex());
+         cur = _current_download;
+         queued = _queue.size();
++        last_raw = _last_raw;
+         // names of the next downloads for the Android notification
+         for (size_t i = 0; i < queued && i < 3; ++i)
+             queued_names += fmt::format("q{}={}\n", i, one_line(_queue[i].name));
+@@ -459,7 +461,7 @@ void Downloader::write_status(
+             MAX_RETRIES,
+             kind,
+             one_line(msg),
+-            one_line(_last_raw));
++            one_line(last_raw));
+     try
+     {
+         pkgi_save(STATUS_FILE, text.data(), static_cast<uint32_t>(text.size()));
+@@ -583,7 +585,10 @@ void Downloader::run()
+                     if (_cancel_current || _dying)
+                         break;
+                     const auto info = classify_error(raw);
+-                    _last_raw = raw;
++                    {
++                        ScopeLock _(_cond.get_mutex());
++                        _last_raw = raw;
++                    }
+                     LOG_ERR("Download failed (attempt %d): %s",
+                             attempt + 1,
+                             raw.c_str());
