@@ -1,0 +1,41 @@
+name: Symbolize crash frames
+
+# Resolves libVita3K.so+0x... addresses from a crash log into function names / source lines.
+# The result is written as notices (visible in the run's annotations), because the runner is the
+# only place that can reach the unstripped library artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Id of the Android build run whose symbols artifact to use"
+        required: true
+      addresses:
+        description: "Space separated hex offsets, e.g. 0x159B51C 0x14F81B0"
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  symbolize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download symbols
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.run_id }}" --repo "$GITHUB_REPOSITORY" --pattern '*-symbols' --dir sym
+          find sym -name libVita3K.so -exec ls -la {} \;
+
+      - name: Resolve addresses
+        run: |
+          so=$(find sym -name libVita3K.so | head -1)
+          tool=$(find "${ANDROID_NDK_HOME:-/usr/local/lib/android/sdk/ndk}" -name llvm-addr2line -type f 2>/dev/null | head -1)
+          [ -z "$tool" ] && tool=$(command -v llvm-addr2line || command -v addr2line)
+          echo "tool: $tool"
+          for a in ${{ inputs.addresses }}; do
+            out=$("$tool" -f -C -i -e "$so" "$a" | paste -sd' ' | cut -c1-900)
+            echo "$a -> $out"
+            echo "::notice title=$a::$out"
+          done
