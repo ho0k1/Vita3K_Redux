@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <memory>
+
 #include <mem/ptr.h>
 #include <util/types.h>
 
@@ -262,6 +265,8 @@ struct SceRequest {
     HeadersMapType headers;
     SceRequestResponse res;
     std::vector<Ptr<void>> guestPointers;
+    // set by sceHttpAbortRequest from another thread; shared_ptr keeps SceRequest copyable
+    std::shared_ptr<std::atomic<bool>> aborted = std::make_shared<std::atomic<bool>>(false);
 };
 
 struct HTTPState {

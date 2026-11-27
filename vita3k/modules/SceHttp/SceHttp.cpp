@@ -116,9 +116,27 @@ std::string to_debug_str<SceHttpsFlags>(const MemState &mem, SceHttpsFlags type)
     return out;
 }
 
-EXPORT(int, sceHttpAbortRequest) {
-    TRACY_FUNC(sceHttpAbortRequest);
-    return UNIMPLEMENTED();
+EXPORT(int, sceHttpAbortRequest, SceInt reqId) {
+    TRACY_FUNC(sceHttpAbortRequest, reqId);
+    if (!emuenv.http.inited)
+        return RET_ERROR(SCE_HTTP_ERROR_BEFORE_INIT);
+
+    const auto req = emuenv.http.requests.find(reqId);
+    if (req == emuenv.http.requests.end())
+        return RET_ERROR(SCE_HTTP_ERROR_INVALID_ID);
+
+    // wake up a thread that waits for data of this request (PKGj stall watchdog)
+    LOG_INFO("[HTTP] sceHttpAbortRequest req={}", reqId);
+    req->second.aborted->store(true);
+    const auto conn = emuenv.http.connections.find(req->second.connId);
+    if (conn != emuenv.http.connections.end()) {
+#ifdef _WIN32
+        shutdown(conn->second.sockfd, SD_BOTH);
+#else
+        shutdown(conn->second.sockfd, SHUT_RDWR);
+#endif
+    }
+    return 0;
 }
 
 EXPORT(int, sceHttpAbortRequestForce) {
@@ -1072,6 +1090,10 @@ EXPORT(SceInt, sceHttpSendRequest, SceInt reqId, const char *postData, SceSize s
                 if (errno == EWOULDBLOCK) {
                     if (attempts > emuenv.cfg.http_read_end_attempts)
                         break; // we can assume there is no more data to read
+                    if (req->second.aborted->load()) {
+                        delete[] resHeaders;
+                        return RET_ERROR(SCE_HTTP_ERROR_ABORTED);
+                    }
                     LOG_TRACE("No data available. Sleep for {}. Attempt {}", emuenv.cfg.http_read_end_sleep_ms, attempts);
                     std::this_thread::sleep_for(std::chrono::milliseconds(emuenv.cfg.http_read_end_sleep_ms));
                     attempts++;
@@ -1089,6 +1111,10 @@ EXPORT(SceInt, sceHttpSendRequest, SceInt reqId, const char *postData, SceSize s
             if (strcmp(resHeaders, "") == 0) {
                 if (attempts > emuenv.cfg.http_timeout_attempts)
                     break; // Give up
+                if (req->second.aborted->load()) {
+                    delete[] resHeaders;
+                    return RET_ERROR(SCE_HTTP_ERROR_ABORTED);
+                }
                 LOG_TRACE("Response is null. Sleep for {}. Attempt {}", emuenv.cfg.http_timeout_sleep_ms, attempts);
                 std::this_thread::sleep_for(std::chrono::milliseconds(emuenv.cfg.http_timeout_sleep_ms));
                 attempts++;
@@ -1150,6 +1176,10 @@ EXPORT(SceInt, sceHttpSendRequest, SceInt reqId, const char *postData, SceSize s
                 if (errno == EWOULDBLOCK) {
                     if (attempts > emuenv.cfg.http_read_end_attempts)
                         break; // we can assume there is no more data to read
+                    if (req->second.aborted->load()) {
+                        delete[] reqResponse;
+                        return RET_ERROR(SCE_HTTP_ERROR_ABORTED);
+                    }
                     LOG_TRACE("No data available. Sleep for {}. Attempt {}", emuenv.cfg.http_read_end_sleep_ms, attempts);
                     std::this_thread::sleep_for(std::chrono::milliseconds(emuenv.cfg.http_read_end_sleep_ms));
                     attempts++;
@@ -1166,6 +1196,10 @@ EXPORT(SceInt, sceHttpSendRequest, SceInt reqId, const char *postData, SceSize s
         if (bytes == 0) {
             if (attempts > emuenv.cfg.http_timeout_attempts)
                 break; // Give up
+            if (req->second.aborted->load()) {
+                delete[] reqResponse;
+                return RET_ERROR(SCE_HTTP_ERROR_ABORTED);
+            }
             LOG_TRACE("Response is null. Sleep for {}. Attempt {}", emuenv.cfg.http_timeout_sleep_ms, attempts);
             std::this_thread::sleep_for(std::chrono::milliseconds(emuenv.cfg.http_timeout_sleep_ms));
             attempts++;
