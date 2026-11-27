@@ -1,0 +1,199 @@
+diff --git a/src/download.cpp b/src/download.cpp
+index 954d489..3a96bce 100644
+--- a/src/download.cpp
++++ b/src/download.cpp
+@@ -381,6 +381,16 @@ static void init_psp_decrypt(
+     }
+ }
+ 
++namespace
++{
++struct NetBusy
++{
++    std::atomic<bool>& f;
++    explicit NetBusy(std::atomic<bool>& x) : f(x) { f = true; }
++    ~NetBusy() { f = false; }
++};
++}
++
+ void Download::download_data(
+         uint8_t* buffer, uint32_t size, int encrypted, int save)
+ {
+@@ -392,6 +402,8 @@ void Download::download_data(
+ 
+     update_progress();
+ 
++    {
++    NetBusy busy(net_busy);
+     if (!*_http)
+     {
+         LOGF("HTTP GET {} at offset {}", download_url, download_offset);
+@@ -422,6 +434,7 @@ void Download::download_data(
+             pos += read;
+         }
+     }
++    }
+ 
+     download_offset += size;
+ 
+diff --git a/src/download.hpp b/src/download.hpp
+index 44afe2e..dfe34cc 100644
+--- a/src/download.hpp
++++ b/src/download.hpp
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <atomic>
++
+ #include <functional>
+ #include <memory>
+ #include <stdexcept>
+@@ -66,6 +68,16 @@ public:
+     // private:
+     bool save_as_iso{false};
+ 
++    // true while we wait for the network (watched by the stall watchdog)
++    std::atomic<bool> net_busy{false};
++
++    // abort the running HTTP request from another thread
++    void abort_http()
++    {
++        if (_http)
++            _http->abort();
++    }
++
+     std::string root;
+ 
+     std::unique_ptr<Http> _http;
+diff --git a/src/downloader.cpp b/src/downloader.cpp
+index edaf993..7b85d79 100644
+--- a/src/downloader.cpp
++++ b/src/downloader.cpp
+@@ -187,7 +187,9 @@ std::string type_to_string(Type type)
+ }
+ 
+ Downloader::Downloader()
+-    : _cond("downloader_cond"), _thread("downloader_thread", [this] { run(); })
++    : _cond("downloader_cond"),
++      _thread("downloader_thread", [this] { run(); }),
++      _watchdog_thread("downloader_watchdog", [this] { watchdog(); })
+ {
+     LOG("Downloader initialized");
+ }
+@@ -198,9 +200,43 @@ Downloader::~Downloader()
+     _dying = true;
+     _cond.notify_one();
+     _thread.join();
++    _watchdog_thread.join();
+     LOG("Downloader thread stopped");
+ }
+ 
++constexpr uint32_t STALL_SECONDS = 300;
++
++void Downloader::watchdog()
++{
++    uint64_t last_offset = 0;
++    uint32_t last_change = pkgi_time_msec();
++    while (!_dying)
++    {
++        pkgi_sleep(1000);
++        const uint32_t now = pkgi_time_msec();
++        const uint64_t offset = _download_offset.load();
++        if (!_transfer_active || offset != last_offset)
++        {
++            last_offset = offset;
++            last_change = now;
++            continue;
++        }
++        if (now - last_change < STALL_SECONDS * 1000)
++            continue;
++
++        ScopeLock _(_cond.get_mutex());
++        // only a stall while we really wait for the network (not while hashing or installing)
++        if (!_active_download || !_active_download->net_busy.load())
++            continue;
++        LOG_ERR("Download stalled for %u s at %llu bytes, restarting from the same place",
++                STALL_SECONDS,
++                static_cast<unsigned long long>(offset));
++        _stalled = true;
++        _active_download->abort_http();
++        last_change = now; // the restart gets a full period of its own
++    }
++}
++
+ void Downloader::add(const DownloadItem& d)
+ {
+     LOG("Queued download: %s", d.name.c_str());
+@@ -576,6 +612,7 @@ void Downloader::run()
+             {
+                 try
+                 {
++                    _stalled = false;
+                     do_download(item);
+                     break;
+                 }
+@@ -584,7 +621,10 @@ void Downloader::run()
+                     const std::string raw = e.what();
+                     if (_cancel_current || _dying)
+                         break;
+-                    const auto info = classify_error(raw);
++                    const bool stalled = _stalled.exchange(false);
++                    const auto info = stalled
++                            ? ErrorInfo{"network", true, "Загрузка зависла (нет данных 5 минут), перезапускаем с того же места"}
++                            : classify_error(raw);
+                     {
+                         ScopeLock _(_cond.get_mutex());
+                         _last_raw = raw;
+@@ -681,13 +721,30 @@ void Downloader::do_download_package(const DownloadItem& item)
+         maybe_write_status();
+     };
+     download->update_status = [](auto&&) {};
+-    download->is_canceled = [this] { return _cancel_current || _dying; };
+-    if (!download->pkgi_download(
++    download->is_canceled = [this] { return _cancel_current || _dying || _stalled; };
++    {
++        ScopeLock _(_cond.get_mutex());
++        _active_download = download.get();
++    }
++    BOOST_SCOPE_EXIT_ALL(&)
++    {
++        _transfer_active = false;
++        ScopeLock _(_cond.get_mutex());
++        _active_download = nullptr;
++    };
++    _transfer_active = true;
++    const bool downloaded = download->pkgi_download(
+                 item.partition.c_str(),
+                 item.content.c_str(),
+                 item.url.c_str(),
+                 item.rif.empty() ? nullptr : item.rif.data(),
+-                item.digest.empty() ? nullptr : item.digest.data()))
++                item.digest.empty() ? nullptr : item.digest.data());
++    _transfer_active = false;
++    {
++        ScopeLock _(_cond.get_mutex());
++        _active_download = nullptr;
++    }
++    if (!downloaded)
+         return;
+     LOG("[%s] Download complete: %s", type_to_string(item.type).c_str(), item.name.c_str());
+     write_status("installing");
+diff --git a/src/downloader.hpp b/src/downloader.hpp
+index 7711bcb..e3a8cb9 100644
+--- a/src/downloader.hpp
++++ b/src/downloader.hpp
+@@ -103,7 +103,14 @@ private:
+     std::atomic<uint32_t> _last_status_ms{0};
+     std::atomic<bool> _ready{false};
+ 
++    // stall watchdog: no data for STALL_SECONDS -> abort the request and resume from the same place
++    std::atomic<bool> _stalled{false};
++    std::atomic<bool> _transfer_active{false};
++    Download* _active_download = nullptr; // guarded by _cond mutex
++    void watchdog();
++
+     Thread _thread;
++    Thread _watchdog_thread;
+     std::atomic<bool> _dying{false};
+ 
+     void save_queue_locked();
