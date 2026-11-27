@@ -208,7 +208,7 @@ index edaf993..006614e 100644
      write_status("installing");
      pkgi_install_comppack(
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index 7711bcb..2e03d87 100644
+index 7711bcb..61e9a9f 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
 @@ -1,5 +1,7 @@
@@ -228,10 +228,13 @@ index 7711bcb..2e03d87 100644
  struct DownloadItem
  {
      Type type;
-@@ -103,7 +107,16 @@ private:
+@@ -102,9 +106,19 @@ private:
+     std::string _last_raw; // raw exception text of the last failure, for the status file
      std::atomic<uint32_t> _last_status_ms{0};
      std::atomic<bool> _ready{false};
- 
++    // must be declared before the threads: they start in the constructor and read it at once
++    std::atomic<bool> _dying{false};
++
 +    // stall watchdog: no data for STALL_SECONDS -> abort the request and resume from the same place
 +    std::atomic<bool> _stalled{false};
 +    std::atomic<bool> _transfer_active{false};
@@ -239,12 +242,13 @@ index 7711bcb..2e03d87 100644
 +    const std::atomic<bool>* _active_busy = nullptr;
 +    std::function<void()> _active_abort;
 +    void watchdog();
-+
+ 
      Thread _thread;
+-    std::atomic<bool> _dying{false};
 +    Thread _watchdog_thread;
-     std::atomic<bool> _dying{false};
  
      void save_queue_locked();
+     // the Android notification asks for a cancel through ux0:pkgj/cancel.req
 diff --git a/src/filedownload.cpp b/src/filedownload.cpp
 index 0343a17..822bb80 100644
 --- a/src/filedownload.cpp
