@@ -179,10 +179,19 @@ index edaf993..7b85d79 100644
      LOG("[%s] Download complete: %s", type_to_string(item.type).c_str(), item.name.c_str());
      write_status("installing");
 diff --git a/src/downloader.hpp b/src/downloader.hpp
-index 7711bcb..e3a8cb9 100644
+index 7711bcb..d20f8ba 100644
 --- a/src/downloader.hpp
 +++ b/src/downloader.hpp
-@@ -103,7 +103,14 @@ private:
+@@ -23,6 +23,8 @@ enum Type
+     CompPackPatch,
+ };
+ 
++class Download;
++
+ struct DownloadItem
+ {
+     Type type;
+@@ -103,7 +105,14 @@ private:
      std::atomic<uint32_t> _last_status_ms{0};
      std::atomic<bool> _ready{false};
  
