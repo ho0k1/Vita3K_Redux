@@ -43,14 +43,31 @@ class InstallForegroundService : Service() {
 
         val operationId = intent?.getLongExtra(InstallServiceController.EXTRA_OPERATION_ID, 0L) ?: 0L
         val operationTypeName = intent?.getStringExtra(InstallServiceController.EXTRA_OPERATION_TYPE)
-        val operationType = operationTypeName?.let(InstallOperationType::valueOf)
+        val operationType = operationTypeName?.let { name ->
+            runCatching { InstallOperationType.valueOf(name) }.getOrNull()
+        }
         if (operationId == 0L || operationType == null) {
+            // startForegroundService() requires startForeground() even if we stop right away,
+            // otherwise Android kills the whole app
+            ensureNotificationChannel()
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.install_progress_title)))
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
         if (activeOperationId != 0L && activeOperationId != operationId) {
-            stopSelfResult(startId)
+            // another operation runs: keep its notification, just satisfy the foreground contract
+            ensureNotificationChannel()
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(
+                    InstallServiceController.state.value.statusMessage.ifBlank {
+                        getString(R.string.install_progress_title)
+                    }
+                )
+            )
+            // do not stop the service: the running operation still needs it
             return START_NOT_STICKY
         }
 
