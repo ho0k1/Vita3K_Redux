@@ -866,7 +866,7 @@ EXPORT(SceInt, sceHttpParseStatusLine, const char *statusLine, SceSize lineLen, 
     auto statusCodeLine = cleanLine.substr(cleanLine.find(' ') + 1, 3);
     *responseCode = code;
 
-    auto h = Ptr<char>(alloc(emuenv.mem, sizeof(char), "reasonPhrase"));
+    auto h = Ptr<char>(alloc(emuenv.mem, reason.length() + 1, "reasonPhrase"));
     memcpy(h.get(emuenv.mem), reason.data(), reason.length() + 1);
     emuenv.http.guestPointers.emplace_back(h);
     *reasonPhrase = h;
@@ -945,7 +945,7 @@ EXPORT(SceInt, sceHttpRequestGetAllHeaders, SceInt reqId, Ptr<char> *header, Sce
 
     auto headers = net_utils::constructHeaders(req->second.headers);
 
-    auto h = Ptr<char>(alloc(emuenv.mem, sizeof(char), "headers"));
+    auto h = Ptr<char>(alloc(emuenv.mem, headers.length() + 1, "headers"));
     memcpy(h.get(emuenv.mem), headers.data(), headers.length() + 1);
     req->second.guestPointers.emplace_back(h);
     *header = h;
@@ -1395,24 +1395,40 @@ EXPORT(SceInt, sceHttpTerm) {
 
     // clear everything
 
-    for (auto &tmpl : emuenv.http.templates) {
-        CALL_EXPORT(sceHttpDeleteTemplate, tmpl.first);
+    // the delete exports erase from these maps, so iterate over a copy of the ids
+    {
+        std::vector<SceInt> ids;
+        for (const auto &tmpl : emuenv.http.templates)
+            ids.push_back(tmpl.first);
+        for (const auto id : ids)
+            CALL_EXPORT(sceHttpDeleteTemplate, id);
     }
     emuenv.http.templates.clear();
 
-    for (auto &conn : emuenv.http.connections) {
-        CALL_EXPORT(sceHttpDeleteConnection, conn.first);
+    {
+        std::vector<SceInt> ids;
+        for (const auto &conn : emuenv.http.connections)
+            ids.push_back(conn.first);
+        for (const auto id : ids)
+            CALL_EXPORT(sceHttpDeleteConnection, id);
     }
     emuenv.http.connections.clear();
 
-    for (auto &req : emuenv.http.requests) {
-        CALL_EXPORT(sceHttpDeleteRequest, req.first);
+    {
+        std::vector<SceInt> ids;
+        for (const auto &req : emuenv.http.requests)
+            ids.push_back(req.first);
+        for (const auto id : ids)
+            CALL_EXPORT(sceHttpDeleteRequest, id);
     }
     emuenv.http.requests.clear();
 
+    // freed once and forgotten: freeing them again on the next sceHttpTerm would release pages that
+    // the guest heap owns by then (corrupts the guest heap with leftover header text)
     for (auto &pointer : emuenv.http.guestPointers) {
         free(emuenv.mem, pointer.address());
     }
+    emuenv.http.guestPointers.clear();
 
     return 0;
 }
