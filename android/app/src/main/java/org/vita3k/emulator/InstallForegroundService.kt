@@ -47,26 +47,13 @@ class InstallForegroundService : Service() {
             runCatching { InstallOperationType.valueOf(name) }.getOrNull()
         }
         if (operationId == 0L || operationType == null) {
-            // startForegroundService() requires startForeground() even if we stop right away,
-            // otherwise Android kills the whole app
-            ensureNotificationChannel()
-            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.install_progress_title)))
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelfResult(startId)
             return START_NOT_STICKY
         }
 
         if (activeOperationId != 0L && activeOperationId != operationId) {
-            // another operation runs: keep its notification, just satisfy the foreground contract
-            ensureNotificationChannel()
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(
-                    InstallServiceController.state.value.statusMessage.ifBlank {
-                        getString(R.string.install_progress_title)
-                    }
-                )
-            )
+            // another operation runs: keep its notification
             // do not stop the service: the running operation still needs it
             return START_NOT_STICKY
         }
