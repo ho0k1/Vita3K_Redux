@@ -29,6 +29,18 @@ class InstallForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForegroundService() obliges us to call startForeground() on every path, including the early
+        // returns below, otherwise Android kills the app (ForegroundServiceDidNotStartInTimeException)
+        ensureNotificationChannel()
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(
+                InstallServiceController.state.value.statusMessage.ifBlank {
+                    getString(R.string.install_progress_title)
+                }
+            )
+        )
+
         val operationId = intent?.getLongExtra(InstallServiceController.EXTRA_OPERATION_ID, 0L) ?: 0L
         val operationTypeName = intent?.getStringExtra(InstallServiceController.EXTRA_OPERATION_TYPE)
         val operationType = operationTypeName?.let(InstallOperationType::valueOf)
@@ -43,15 +55,6 @@ class InstallForegroundService : Service() {
         }
 
         activeOperationId = operationId
-        ensureNotificationChannel()
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification(
-                InstallServiceController.state.value.statusMessage.ifBlank {
-                    getString(R.string.install_progress_title)
-                }
-            )
-        )
         acquireWakeLock()
         NativeLib.prepareFrontend()
 
