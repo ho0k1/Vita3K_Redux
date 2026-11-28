@@ -31,17 +31,28 @@ class DownloadKeepAliveService : Service() {
     private var lastTimeMs = 0L
     private var running = false
     private var sawData = false
+    private var stopping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         // must call startForeground right away, even if stop() follows immediately
         ensureChannel()
         goForeground(buildOngoing(getString(R.string.pkgj_bg_starting)))
+        if (stopPending) {
+            // stop() came before the system created the service: stopping the service from outside at that
+            // moment would crash the app (startForegroundService without startForeground)
+            stopPending = false
+            stopping = true
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (stopping) return START_NOT_STICKY
         if (intent?.action == ACTION_STOP_AND_PAUSE) {
             pauseEmulation()
             finish(showDone = false)
@@ -244,6 +255,7 @@ class DownloadKeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         running = false
         handler.removeCallbacks(poll)
         releaseLocks()
@@ -350,15 +362,27 @@ class DownloadKeepAliveService : Service() {
         private const val POLL_MS = 2000L
         private const val WAKE_LOCK_TIMEOUT_MS = 6L * 60L * 60L * 1000L
 
+        @Volatile
+        private var instance: DownloadKeepAliveService? = null
+
+        @Volatile
+        private var stopPending = false
+
         @JvmStatic
         fun start(context: Context) {
+            stopPending = false
             val intent = Intent(context, DownloadKeepAliveService::class.java)
             runCatching { androidx.core.content.ContextCompat.startForegroundService(context, intent) }
         }
 
         @JvmStatic
         fun stop(context: Context) {
-            runCatching { context.stopService(Intent(context, DownloadKeepAliveService::class.java)) }
+            if (instance != null) {
+                runCatching { context.stopService(Intent(context, DownloadKeepAliveService::class.java)) }
+            } else {
+                // either nothing runs, or start() was just called and the service does not exist yet
+                stopPending = true
+            }
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.cancel(DONE_NOTIFICATION_ID)
         }
